@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Gumball Chat · Control Room</title><link rel="stylesheet" href="/shared/theme.css"><link rel="stylesheet" href="/panel/panel.css">
+</head>
+<body class="panel-page">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/"><span class="brand-mark">✳</span><span>GUMBALL<span class="brand-sub">CHAT STUDIO</span></span></a>
+      <div class="channel-card"><span class="live-dot"></span><div><small>SESIÓN LOCAL</small><strong>La máquina está lista</strong></div><span class="chevron">⌄</span></div>
+      <nav><span class="nav-label">TU STREAM</span><a class="nav-item active" href="#queue"><span>▦</span> Máquina <b id="nav-count">0</b></a><a class="nav-item" href="#languages"><span>◎</span> Idiomas</a><a class="nav-item" href="/overlay" target="_blank"><span>↗</span> Abrir overlay</a></nav>
+      <div class="sidebar-bottom"><div class="connection"><span class="connection-icon">⌁</span><div><small>FUENTE DE CHAT</small><strong id="connection-label">Simulador conectado</strong></div></div><div class="side-note">Los mensajes son tuyos para abrir.<br>La máquina nunca elige por ti.</div><div class="profile"><span class="avatar">G</span><div><strong>Streamer</strong><small>Idioma · Español</small></div><span class="settings">⚙</span></div></div>
+    </aside>
+
+    <main class="main-content" id="queue">
+      <header class="topbar"><div class="breadcrumbs">Gumball Chat <span>/</span> <b>Control Room</b></div><div class="top-actions"><button class="button button-ghost" id="connect-twitch">Conectar Twitch</button><span class="status-chip"><i></i> SISTEMA ACTIVO</span><button class="icon-button" title="Ayuda">?</button></div></header>
+      <section class="welcome-row"><div><p class="eyebrow">TU COMUNIDAD, EN OTRA DIMENSIÓN</p><h1>La máquina de hoy<span class="title-sparkle">✦</span></h1><p class="subtitle">Cada mensaje útil encuentra su lugar. Tú decides cuándo abrirlo.</p></div><button id="overlay-link" class="button button-ghost" onclick="window.open('/overlay','_blank')">◉ <span>Vista del overlay</span><span class="external">↗</span></button></section>
+
+      <section class="stats-grid">
+        <article class="stat-card stat-total"><div class="stat-icon">✳</div><div><small>BOLITAS EN LA MÁQUINA</small><strong id="total-count">00</strong></div><span class="stat-foot">esta sesión</span></article>
+        <article class="stat-card"><div class="stat-icon pink">♡</div><div><small>POR ABRIR</small><strong id="pending-count">00</strong></div><span class="stat-foot">esperando tu momento</span></article>
+        <article class="stat-card"><div class="stat-icon blue">◉</div><div><small>IDIOMAS EN EL CHAT</small><strong id="language-total">00</strong></div><span class="stat-foot">voces de la comunidad</span></article>
+      </section>
+
+      <div class="workspace-grid">
+        <section class="inventory-panel panel-card">
+          <div class="section-heading"><div><div class="section-title-line"><span class="mini-orbit">✦</span><h2>Inventario</h2><span class="live-pill"><i></i> EN VIVO</span></div><p>Filtra el contenido que ves dentro de la máquina.</p></div><button class="text-button" id="refresh">↻ <span>Actualizar</span></button></div>
+          <div class="filter-row" id="filters">
+            <button class="filter-chip selected" data-filter="all">Todas <span id="count-all">0</span></button>
+            <button class="filter-chip" data-filter="pista"><i class="gum-dot yellow"></i> Pistas <span id="count-pista">0</span></button>
+            <button class="filter-chip" data-filter="spoiler"><i class="gum-dot black"></i> Spoilers <span id="count-spoiler">0</span></button>
+            <button class="filter-chip" data-filter="prediccion"><i class="gum-dot purple"></i> Predicciones <span id="count-prediccion">0</span></button>
+            <button class="filter-chip" data-filter="animo"><i class="gum-dot pink"></i> Ánimo <span id="count-animo">0</span></button>
+            <button class="filter-chip" data-filter="reto"><i class="gum-dot red"></i> Retos <span id="count-reto">0</span></button>
+          </div>
+          <div class="inventory-content"><div class="inventory-list" id="message-list"></div><div class="machine-teaser"><div class="teaser-glass"><div class="teaser-shine"></div><div class="teaser-balls"><i class="yellow"></i><i class="pink"></i><i class="purple"></i><i class="red"></i><i class="black"></i><i class="yellow"></i><i class="pink"></i></div></div><div class="teaser-base"><span>GUM<br>DROP</span></div><div class="teaser-knob">✦</div></div></div>
+          <div class="inventory-footer"><span><i class="legend-dot"></i> <b id="visible-total">0 bolitas</b> visibles</span><span>La IA organiza. Tú tienes el control.</span></div>
+        </section>
+
+        <aside class="right-column">
+          <section class="draw-card"><div class="draw-glow"></div><div class="draw-top"><span class="eyebrow">ELIGE TU MOMENTO</span><span class="draw-spark">✧</span></div><h2>¿Qué te gustaría<br>descubrir?</h2><p>Una bolita al azar, directo a la pantalla.</p><button class="button button-primary" id="draw-button"><span class="button-ball">✦</span> Sacar una bolita <span class="button-arrow">→</span></button><div class="draw-meta"><span>⏱ Tú decides</span><span>Solo pistas, ánimo y retos</span></div></section>
+          <section class="sealed-card"><div class="sealed-title"><span class="lock-icon">⌑</span><div><small>GUARDADOS HASTA EL FINAL</small><h3>Spoilers sellados</h3></div><span class="sealed-count" id="sealed-count">0</span></div><p>La curiosidad puede esperar. Se revelan todos juntos cuando tú lo decidas.</p><button class="button button-sealed" id="reveal-button">◈ &nbsp; Revelación final <span>→</span></button></section>
+          <section class="language-card" id="languages"><div class="section-title-line"><span class="language-icon">文</span><h3>Desde todas partes</h3></div><p>Idiomas detectados esta sesión</p><div id="language-bars" class="language-bars"><div class="empty-language">Los idiomas aparecerán cuando llegue el primer mensaje.</div></div></section>
+        </aside>
+      </div>
+
+      <section class="ai-context-bar panel-card"><label for="game-title">Juego actual <input id="game-title" maxlength="100" placeholder="Ej. Hollow Knight" autocomplete="off"></label><span id="ai-status" class="ai-indicator paused" role="status">GEMINI PAUSADA · RESPALDO LOCAL</span></section>
+      <section class="demo-console panel-card"><div class="demo-heading"><span class="demo-icon">⌘</span><div><h3>Prueba la máquina</h3><p>Ejemplos multilingües, mensajes seguros y casos límite.</p></div><span class="demo-badge">MODO SIMULADOR</span></div><div class="demo-controls"><select id="sample-select"><option value="">Cargando mensajes de prueba…</option></select><input id="author-input" maxlength="28" value="ViajeroEstelar" aria-label="Autor"/><button class="button button-send" id="send-sample">Enviar a la máquina <span>↗</span></button></div><div class="custom-row"><input id="custom-message" maxlength="260" placeholder="O escribe tu propio mensaje…"/><button id="send-custom" class="text-button">Enviar mensaje →</button></div></section>
+      <footer class="page-footer"><span>GUMBALL CHAT <i>✦</i> HECHO PARA MOMENTOS COMPARTIDOS</span><span>Build 01 <b>·</b> Simulador local</span></footer>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/panel/panel.js"></script>
+</body></html>
