@@ -1,5 +1,23 @@
 # Progreso de Gumball Chat
 
+## Rediseño visual
+
+### Hecho
+
+- [x] Escrito y revisado `docs/DISENO.md` con paleta, tipografía, bocetos y principios concretos para esta máquina.
+- [x] Overlay con esfera de vidrio redonda, colisión circular en Matter.js, bolitas más grandes y cuerpo de metal jade con placa cromada, manivela y rampa.
+- [x] Añadida entrada por esquina y escala con `?pos=left|right&scale=0.45..1.15`; conserva el fondo transparente.
+- [x] Caramelos con colores saturados, brillo y sombra de contacto; las categorías que no coinciden se desaturan y atenúan.
+- [x] Añadida salida de cápsula en dos mitades, papel de mensaje, autor e idioma; llegadas muestran temporalmente el autor. Revelación de spoilers en secuencia.
+- [x] Rediseñado el panel con papel claro, jade y controles de alto contraste; mensajes con color de categoría, estados vacíos accionables y foco visible.
+- [x] Bajadas localmente Bagel Fat One y Bricolage Grotesque WOFF2; el overlay no requiere CDN para tipografía ni física.
+- [x] Quitadas etiquetas decorativas, textos en mayúsculas de exhibición y flechas de relleno. Acción: «Sacar una bolita»; confirmación: «Bolita abierta en el stream».
+
+### Verificación pendiente
+
+- [x] `npm.cmd run smoke` pasa todas las comprobaciones del panel, overlay, fuentes, IA de respaldo y WebSocket.
+- [ ] Revisar la escala en OBS del usuario. Intenté capturas con Edge y Chrome headless; ambos terminan por fallo del proceso GPU de este entorno y no generaron imagen.
+
 ## Día 1 — flujo funcional y reorganización
 
 ### Hecho

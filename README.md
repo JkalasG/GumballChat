@@ -17,7 +17,7 @@ npm.cmd install
 npm.cmd start
 ```
 
-Abre el panel en <http://localhost:3000/>. Abre <http://localhost:3000/overlay> como vista previa o como OBS Browser Source (1920 × 1080, fondo transparente). Para detener el servidor, vuelve a la terminal y pulsa `Ctrl+C`.
+Abre el panel en <http://localhost:3000/>. Abre <http://localhost:3000/overlay> como vista previa o como OBS Browser Source (1920 × 1080, fondo transparente). La máquina queda anclada a la derecha por defecto; usa `?pos=left&scale=0.8` para ponerla a la izquierda. `scale` admite valores entre 0.45 y 1.15. Las fuentes y Matter.js se sirven desde `public/vendor/`, así el overlay no necesita CDN. Para detener el servidor, vuelve a la terminal y pulsa `Ctrl+C`.
 
 ## Elegir y probar la fuente de chat
 
@@ -48,7 +48,7 @@ npm.cmd run smoke
 │   ├── panel/            # Panel del streamer
 │   ├── overlay/          # Máquina y overlay OBS
 │   ├── shared/           # Tema y estilos comunes
-│   └── vendor/            # Matter.js servido localmente
+│   └── vendor/            # Matter.js y fuentes servidos localmente
 ├── scripts/              # Smoke check y prueba IRC anónima
 ├── server/
 │   ├── ai/               # Clasificador y fallback local

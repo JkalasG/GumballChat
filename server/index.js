@@ -210,7 +210,7 @@ function serveStatic(urlPath, res) {
   if (!target.startsWith(PUBLIC + path.sep)) return json(res, 403, { error: 'Prohibido' });
   fs.readFile(target, (error, data) => {
     if (error) return json(res, 404, { error: 'No encontrado' });
-    const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+    const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.woff2': 'font/woff2', '.ttf': 'font/ttf' };
     res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
     res.end(data);
   });

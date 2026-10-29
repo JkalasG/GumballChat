@@ -8,7 +8,7 @@ socket.addEventListener('message', event => {
   const data = JSON.parse(event.data);
   if (data.type === 'state') render(data.data);
   if (data.type === 'notice') toast(data.message);
-  if (data.type === 'opened') toast('La bolita se abrió en el overlay.');
+  if (data.type === 'opened') toast('Bolita abierta en el stream');
   if (data.type === 'twitch-status') document.querySelector('#connection-label').textContent = data.connected ? 'Twitch conectado' : (data.error || 'Simulador conectado');
   if (data.type === 'ai-status') renderAiStatus(data.status);
   if (data.type === 'game-context' && !editingGameTitle) document.querySelector('#game-title').value = data.gameTitle || '';
@@ -40,8 +40,8 @@ function render(next) {
   const list = document.querySelector('#message-list');
   list.innerHTML = visible.length ? visible.slice().reverse().map(message => {
     const category = Object.hasOwn(categoryLabels, message.category) ? message.category : 'pista';
-    return `<div class="message-row"><i class="gum-dot ${category}"></i><div class="msg-main"><span class="msg-text">${escapeHtml(message.translatedText)}</span><span class="msg-original" hidden>${escapeHtml(message.text)}</span><div class="msg-meta"><span>@${escapeHtml(message.author)}</span><span>·</span><span>${flag(message.sourceLanguage)} ${escapeHtml(message.sourceLanguage)}</span><span class="msg-tag">${categoryLabels[category]}${message.highlight ? ' ✦' : ''}</span></div></div><div class="msg-actions"><button class="mini-action original-toggle" data-id="${escapeHtml(message.id)}">Ver original</button>${category === 'spoiler' ? '<span class="mini-action" title="Sellado">🔒</span>' : `<button class="mini-action open-item" data-id="${escapeHtml(message.id)}">Abrir</button>`}<button class="mini-action discard" data-id="${escapeHtml(message.id)}" title="Descartar">×</button></div></div>`;
-  }).join('') : '<div class="empty-state"><span class="empty-orbit">✧</span>Tu máquina está esperando.<br>Envía un mensaje de prueba para llenarla.</div>';
+    return `<div class="message-row"><i class="gum-dot ${category}"></i><div class="msg-main"><span class="msg-text">${escapeHtml(message.translatedText)}</span><span class="msg-original" hidden>${escapeHtml(message.text)}</span><div class="msg-meta"><span>@${escapeHtml(message.author)}</span><span>·</span><span>${flag(message.sourceLanguage)} ${escapeHtml(message.sourceLanguage)}</span><span class="msg-tag">${categoryLabels[category]}${message.highlight ? ' ✦' : ''}</span></div></div><div class="msg-actions"><button class="mini-action original-toggle" data-id="${escapeHtml(message.id)}">Ver original</button>${category === 'spoiler' ? '<span class="mini-action" title="Sellado">Sellado</span>' : `<button class="mini-action open-item" data-id="${escapeHtml(message.id)}">Sacar</button>`}<button class="mini-action discard" data-id="${escapeHtml(message.id)}" title="Descartar">Quitar</button></div></div>`;
+  }).join('') : '<div class="empty-state">No hay bolitas con este filtro.<br>Elige otra categoría o envía un mensaje de prueba.</div>';
   list.querySelectorAll('.open-item').forEach(button => button.addEventListener('click', () => send({ type: 'open-id', id: button.dataset.id })));
   list.querySelectorAll('.discard').forEach(button => button.addEventListener('click', () => send({ type: 'discard', id: button.dataset.id })));
   list.querySelectorAll('.original-toggle').forEach(button => button.addEventListener('click', () => {
@@ -58,9 +58,9 @@ function render(next) {
 function renderAiStatus(status) {
   const indicator = document.querySelector('#ai-status');
   const states = {
-    active: ['active', 'IA ACTIVA · GEMINI'],
-    fallback: ['fallback', 'EN RESPALDO · CLASIFICADOR LOCAL'],
-    paused: ['paused', 'GEMINI PAUSADA · RESPALDO LOCAL']
+    active: ['active', 'Gemini activa'],
+    fallback: ['fallback', 'Clasificador local activo'],
+    paused: ['paused', 'Respaldo local activo']
   };
   const [className, label] = states[status?.state] || states.paused;
   indicator.className = `ai-indicator ${className}`;

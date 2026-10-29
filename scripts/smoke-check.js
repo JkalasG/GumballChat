@@ -105,17 +105,18 @@ async function verifyGeminiRestContract() {
 
 async function run() {
   await waitUntilReady();
-  const [panel, overlay, panelScript, overlayScript, panelCss, overlayCss, sharedTheme, matter, sampleList, aiStatus] = await Promise.all([
+  const [panel, overlay, panelScript, overlayScript, panelCss, overlayCss, sharedTheme, matter, font, sampleList, aiStatus] = await Promise.all([
     request('/'), request('/overlay'), request('/panel/panel.js'), request('/overlay/overlay.js'),
     request('/panel/panel.css'), request('/overlay/overlay.css'), request('/shared/theme.css'),
-    request('/vendor/matter.min.js'), request('/api/samples'), request('/api/ai/status')
+    request('/vendor/matter.min.js'), request('/vendor/fonts/BagelFatOne-latin.woff2'), request('/api/samples'), request('/api/ai/status')
   ]);
   if (!panel.includes('/panel/panel.js') || !panel.includes('id="game-title"') || !panel.includes('id="ai-status"')) throw new Error('El panel no contiene contexto de juego o estado de IA.');
   if (!overlay.includes('/vendor/matter.min.js') || !overlay.includes('/overlay/overlay.js')) throw new Error('El overlay no referencia Matter.js local o su script.');
   if (!matter.includes('Matter.Engine')) throw new Error('No se sirvió Matter.js local.');
-  if (!panelScript.includes('original-toggle') || !panelScript.includes('escapeHtml') || !overlayScript.includes('Matter.Engine')) throw new Error('No se sirvieron scripts actualizados o seguros.');
+  if (!panelScript.includes('original-toggle') || !panelScript.includes('escapeHtml') || !overlayScript.includes('Engine.update(engine') || !overlayScript.includes('Bodies.rectangle')) throw new Error('No se sirvieron scripts actualizados o seguros.');
   if (!panelCss.includes('.ai-indicator') || !overlayCss.includes('background:transparent')) throw new Error('No se sirvieron los estilos del frontend.');
   if (!sharedTheme.includes('--ink') || !Array.isArray(sampleList) || sampleList.length < 10) throw new Error('Faltan estilos comunes o fixtures del simulador.');
+  if (!font || !sharedTheme.includes('/vendor/fonts/BagelFatOne-latin.woff2')) throw new Error('No se sirvieron las fuentes locales.');
   if (aiStatus.state !== 'paused') throw new Error('El smoke check debe arrancar con Gemini deshabilitada y respaldo local activo.');
   console.log('✓ HTTP: panel, overlay, vendor, muestras y estado IA');
 
