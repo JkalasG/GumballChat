@@ -1,75 +1,140 @@
+**English** | [Español](README.es.md)
+
 # Gumball Chat
 
-Gumball Chat convierte mensajes útiles de Twitch en bolitas de colores. El streamer revisa el inventario y decide qué abrir en el overlay de OBS. La demo funciona con simulador; para chat real están disponibles IRC anónimo experimental y Twitch EventSub autenticado.
+Gumball Chat turns useful Twitch chat messages into colored gumballs the streamer opens live on stream.
 
-## Requisitos
+## Preview and links
 
-- Windows 11 (PowerShell o terminal integrada de VS Code)
-- Node.js 24 o posterior
-- Matter.js 0.20.0 incluido localmente; se requiere internet para las fuentes web y los servicios externos configurados
+- Overlay capture: pending a verified screenshot at `docs/media/overlay.png`.
+- Demo video (YouTube): pending publication.
+- Devpost: pending publication.
+- Panel: <http://localhost:3000/>
+- OBS overlay: <http://localhost:3000/overlay>
+- Viewer instructions: <http://localhost:3000/instructivos>
+- Design: [docs/DISENO.md](docs/DISENO.md) (Spanish)
+- Project plan and Twitch integration: [docs/PLAN.md](docs/PLAN.md) (Spanish)
 
-## Ejecutar
+## Features
 
-Desde la raíz del proyecto:
+- Chat messages are classified, translated, and filtered before entering the machine.
+- The streamer reviews colored gumballs and chooses when to draw one; the overlay animates the selected message into a public card.
+- Spoilers remain sealed until the final reveal.
+- Optional category tags include `&hint` / `&pista`, `&challenge` / `&reto`, `&cheer` / `&animo`, `&prediction` / `&prediccion`, and `&spoiler`. Messages without tags are classified automatically.
+- AI and local safety filters continue to inspect tagged and untagged messages for spam, unsafe content, and prompt injection.
+- English and Spanish interface languages, message-language translation, OBS overlay controls, and configurable public cards.
+- The panel groups repeated messages by frequency and authors. The simulator includes a one-button 50-gumball fill for layout previews.
+
+## How it connects to Twitch
+
+The default `simulator` mode works without Twitch credentials. `eventsub` listens for `channel.chat.message` over Twitch EventSub WebSocket and validates the configured bot token for `user:read:chat` and `user:bot`. The experimental `anonymous` IRC mode attempts to join a public channel without OAuth and may be rejected by Twitch. The app does not send replies to chat; `user:write:chat` is not currently used.
+
+## Quick start
+
+Requires Node.js 24 or later. No Twitch or Gemini credentials are needed to try the local simulator.
 
 ```powershell
 npm.cmd install
 npm.cmd start
 ```
 
-Abre el panel en <http://localhost:3000/>. Abre <http://localhost:3000/overlay> como vista previa o como OBS Browser Source (1920 × 1080, fondo transparente). La máquina queda anclada a la derecha por defecto; usa `?pos=left&scale=0.8` para ponerla a la izquierda. `scale` admite valores entre 0.45 y 1.15. Las fuentes y Matter.js se sirven desde `public/vendor/`, así el overlay no necesita CDN. Para detener el servidor, vuelve a la terminal y pulsa `Ctrl+C`.
+Open <http://localhost:3000/>, select **50 gumballs**, then choose **Draw a gumball**. Without `GEMINI_API_KEY`, safe messages use the local classifier. On macOS/Linux, use `npm install` and `npm start`.
 
-## Elegir y probar la fuente de chat
+## Connect your Twitch channel
 
-Configura `CHAT_MODE` en `.env`: `simulator`, `anonymous` o `eventsub`. El modo predeterminado es `simulator` hasta confirmar IRC anónimo desde tu red. Para probar con un canal público **en vivo**, ejecuta:
+1. Register a Twitch application at [Twitch Developer Console](https://dev.twitch.tv/console/apps).
+2. Review [EventSub](https://dev.twitch.tv/docs/eventsub/) and [Twitch authentication and scopes](https://dev.twitch.tv/docs/authentication/).
+3. Create a local `.env` from `.env.example`. For EventSub, set `CHAT_MODE=eventsub`, `TWITCH_CLIENT_ID`, `TWITCH_OAUTH_TOKEN`, `TWITCH_CHANNEL_LOGIN`, and `TWITCH_BOT_LOGIN`. Use a token belonging to the configured bot account and grant `user:read:chat` and `user:bot`.
+4. Restart the server and select **Connect Twitch** in the panel.
 
-```powershell
-node scripts/test-anonymous-irc.js NOMBRE_DEL_CANAL
-```
+Keep `.env` private. IRC mode only needs `CHAT_MODE=anonymous` and `TWITCH_CHANNEL_LOGIN`, but it is experimental. See [docs/PLAN.md](docs/PLAN.md) for project-specific setup details.
 
-El script usa `justinfan` sin token, responde PING y escucha durante 30 segundos. Al final indica claramente si Twitch confirmó la unión al canal y muestra los mensajes recibidos. Si funciona, configura `CHAT_MODE=anonymous` y `TWITCH_CHANNEL_LOGIN=NOMBRE_DEL_CANAL` en `.env`, reinicia con `npm.cmd start` y pulsa **Conectar Twitch** en el panel.
+## OBS setup
 
-IRC anónimo es experimental: Twitch documenta actualmente IRC autenticado con OAuth y el scope `chat:read`. Si Twitch rechaza el acceso, usa `CHAT_MODE=eventsub` y las credenciales descritas en [docs/PLAN.md](docs/PLAN.md). El simulador sigue disponible como fuente local de mensajes de prueba.
+Add a Browser Source at 1920×1080 and keep its aspect ratio; do not stretch it. Use the transparent page <http://localhost:3000/overlay>. Settings in the panel update the overlay live. Existing scene URLs may override saved settings with `?pos=left` or `?pos=right`, `?scale=0.45` through `?scale=1.15`, and `?lang=en` or `?lang=es`. OBS Lanczos scaling is recommended when resizing the source. The instruction page at <http://localhost:3000/instructivos> can be added as a second transparent Browser Source.
 
-## Smoke check
+## Configuration
 
-El smoke check inicia una instancia temporal y verifica rutas y muestras multilingües, filtro/fallback local, el contrato REST Gemini (sin llamar a Google ni usar tu cuota), el flujo WebSocket, apertura de bolitas y sellado/revelación de spoilers:
+| Panel setting | Purpose |
+| --- | --- |
+| Interface language | English or Spanish UI; defaults to English. `?lang=` overrides it per page. |
+| Streamer language | Target language used when translating chat messages. |
+| Overlay side, scale, status | Positions and scales the machine and toggles its status badge. |
+| Card text and display | Translated/original/both text, author, source language, stamp, featured badge, position, size, animation, duration, and character limit. |
+| Category controls | Enable or hide each category and customize its label and stamp (up to 24 characters). |
+
+| `.env` variable | Purpose |
+| --- | --- |
+| `CHAT_MODE` | `simulator`, `anonymous`, or `eventsub`. |
+| `TWITCH_CLIENT_ID` | Twitch application client ID for EventSub. |
+| `TWITCH_OAUTH_TOKEN` | Private bot OAuth token for EventSub. |
+| `TWITCH_CHANNEL_LOGIN` | Channel login used by Twitch chat modes. |
+| `TWITCH_BOT_LOGIN` | Bot login associated with the EventSub token. |
+| `GEMINI_API_KEY` | Optional Google AI Studio key; stays on the server. |
+| `GEMINI_MODEL` | Gemini model name. |
+| `STREAMER_LANGUAGE` | Initial chat translation language before panel settings are saved. |
+| `UI_LANGUAGE` | Initial interface language (`en` or `es`). |
+| `PORT` | HTTP port (default `3000`). |
+| `HOST` | Bind address (default `127.0.0.1`, local machine only). |
+
+Get a Gemini key at [Google AI Studio](https://aistudio.google.com/). Settings are stored locally in the ignored `.gumball-settings.json` file.
+
+## Chat tags
+
+| English tag | Spanish tag | Category / color |
+| --- | --- | --- |
+| `&hint` | `&pista` | Hint · yellow |
+| `&challenge` | `&reto` | Challenge · orange-red |
+| `&cheer` | `&animo` | Cheer · pink |
+| `&prediction` | `&prediccion` | Prediction · purple |
+| `&spoiler` | `&spoiler` | Spoiler · charcoal |
+
+A tag suggests the category; it does not bypass the AI classifier or safety filters. Untagged messages continue through automatic classification.
+
+## How we used Codex
+
+Codex-assisted work in this repository has covered the application flow, local simulator, Twitch EventSub and experimental IRC adapters, message classification and filtering, batching, the animated Matter.js machine, the panel, viewer instructions, and the settings/i18n work described here. The current repository does not include a public Codex session identifier; add the shareable session reference to the Devpost entry if one is published. No other coding tool is claimed here.
+
+## Tests
+
+Run the local smoke checks with:
 
 ```powershell
 npm.cmd run smoke
 ```
 
-## Estructura
+The anonymous IRC connectivity probe is separate and requires a public channel name; it connects to Twitch:
+
+```powershell
+node scripts/test-anonymous-irc.js CHANNEL_NAME
+```
+
+## Project structure
 
 ```text
 .
-├── docs/                 # Plan e idea original
+├── docs/                 # Design, plan, and project notes (mostly Spanish)
 ├── public/
-│   ├── panel/            # Panel del streamer
-│   ├── overlay/          # Máquina y overlay OBS
-│   ├── shared/           # Tema y estilos comunes
-│   └── vendor/            # Matter.js y fuentes servidos localmente
-├── scripts/              # Smoke check y prueba IRC anónima
+│   ├── shared/           # i18n and shared theme
+│   ├── panel/            # Streamer dashboard and configuration
+│   ├── overlay/          # Animated OBS machine and public cards
+│   ├── instructivos/     # Viewer-facing participation guide
+│   └── vendor/           # Local Matter.js and fonts
+├── scripts/              # Smoke check and optional IRC probe
 ├── server/
-│   ├── ai/               # Clasificador y fallback local
-│   ├── chat/             # IRC, EventSub y simulador
-│   ├── index.js          # Arranque HTTP/WebSocket
-│   └── state.js          # Estado en memoria
+│   ├── ai/               # Gemini classifier and local fallback
+│   ├── chat/             # EventSub, IRC, and simulator adapters
+│   ├── index.js          # HTTP and WebSocket server
+│   └── state.js          # In-memory message state
 ├── .env.example
-├── PROGRESO.md
+├── LICENSE
 └── package.json
 ```
 
-## Gemini: clave y configuración
+## Privacy and security
 
-En la raíz del proyecto, crea `.env` copiando `.env.example` y pega tu clave de Google AI Studio en `GEMINI_API_KEY=`. Configura el modelo en `GEMINI_MODEL` (predeterminado `gemini-3.8-flash`) y el idioma destino en `STREAMER_LANGUAGE=es`. La clave solo la lee el servidor; no se incluye en las rutas HTTP ni en los mensajes WebSocket enviados al panel o al overlay.
+Secrets belong in `.env`; the panel and WebSocket state do not expose the Gemini key or Twitch token. The server binds to `127.0.0.1` by default. Chat text is untrusted input: the classifier prompt treats it as data, and local safety filters run before messages are admitted. The local panel has no login; changing `HOST` can expose it to other interfaces, so do that only when intended.
 
-Después, ejecuta `npm.cmd start`, abre el panel y envía ejemplos del simulador. Escribe el título del juego en **Juego actual**; el servidor lo conserva en memoria y lo envía como contexto en cada lote. La clasificación agrupa hasta 10 mensajes cada 2,3 segundos. El indicador del panel muestra Gemini activa, en respaldo local o pausada. Sin clave, los mensajes seguros se procesan con el clasificador local.
+## Credits and license
 
-El simulador tiene muestras en español, inglés, portugués, francés y japonés para pistas, spoilers, predicciones, ánimo, retos, ruido, contenido ofensivo e intento de prompt injection. Usa **Ver original** en una bolita para alternar entre el texto original y la traducción.
-
-## Twitch y claves
-
-El simulador y el modo IRC experimental no requieren claves. Para EventSub, registra una aplicación de Twitch, genera un token con los scopes indicados en [docs/PLAN.md](docs/PLAN.md) y copia los datos privados a `.env` a partir de `.env.example`. Nunca subas `.env` al repositorio.
-
-Gemini usa la API REST `generateContent` con salida JSON estructurada. Las entradas que no cumplen el esquema se descartan; los fallos de llamada, timeout o cuota pasan automáticamente al respaldo local.
+Matter.js is distributed under the MIT License. The Bagel Fat One and Bricolage Grotesque font files in `public/vendor/fonts` retain their OFL notices. Gumball Chat is released under the MIT License; see [LICENSE](LICENSE).
