@@ -12,7 +12,7 @@
   fixedTexts.forEach(([selector,key])=>{const element=document.querySelector(selector);if(element)element.dataset.i18n=key;});
 
   document.getElementById('custom-message').dataset.i18nPlaceholder='panel.customPlaceholder';
-  const configSocket = new WebSocket(`ws://${location.host}/ws`);
+  const configSocket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
   let currentSettings;
   function set(id, value) { const el=document.getElementById(id); if(el) el.value=value; }
   function checked(id, value) { document.getElementById(id).checked=Boolean(value); }

@@ -145,7 +145,8 @@ La página **Configuración** del panel controla todo lo que se ve en el directo
 | `GEMINI_THINKING_LEVEL` | `minimal` (predeterminado), `low`, `high` o `default`. |
 | `STREAMER_LANGUAGE` | Idioma al que se traducen los mensajes. |
 | `UI_LANGUAGE` | Idioma inicial de la interfaz (`en` o `es`). |
-| `PORT`, `HOST` | Predeterminados `3000` y `127.0.0.1` (solo este equipo). |
+| `PORT`, `HOST` | Predeterminados `3000` y `127.0.0.1` (solo este equipo). En Render, `HOST` pasa a `0.0.0.0`. |
+| `PANEL_PASSWORD` | Opcional. Si se define, el panel y la API piden esta contraseña (cualquier usuario). El overlay y la página de instrucciones siguen públicos para OBS y son de solo lectura. |
 
 ## Integración con Twitch
 
@@ -232,7 +233,7 @@ Parte del rediseño visual posterior, el gestor de conexión con Twitch y los re
 ## Privacidad y seguridad
 
 - Los secretos solo están en `.env`, que git ignora; el panel y el overlay nunca reciben la clave de Gemini ni el token de Twitch.
-- El servidor escucha en `127.0.0.1` por defecto. El panel no tiene inicio de sesión: cambia `HOST` solo si de verdad quieres exponerlo.
+- El servidor escucha en `127.0.0.1` por defecto. Si lo publicas en internet, define `PANEL_PASSWORD`: el panel y la API la pedirán, y el overlay seguirá público y de solo lectura.
 - El texto del chat se trata como dato no confiable: el prompt de la IA ignora las instrucciones que vengan dentro de los mensajes, y los filtros locales de seguridad se aplican antes de que algo llegue a la máquina.
 
 ## Créditos y licencia

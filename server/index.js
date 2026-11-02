@@ -1,6 +1,7 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { WebSocketServer } = require('ws');
 const ROOT = path.resolve(__dirname, '..');
 const PUBLIC = path.join(ROOT, 'public');
@@ -14,7 +15,8 @@ const { dropReason, analyze } = require('./ai/local-fallback');
 const { classifyMessages, getStatus: getAiStatus, MAX_BATCH } = require('./ai/classifier');
 
 const PORT = Number(process.env.PORT || 3000);
-const HOST = String(process.env.HOST || '127.0.0.1');
+// En local solo escucha este equipo; en Render (que define RENDER) escucha todas las interfaces.
+const HOST = String(process.env.HOST || (process.env.RENDER ? '0.0.0.0' : '127.0.0.1'));
 const SETTINGS_PATH = process.env.GUMBALL_SETTINGS_PATH || path.join(ROOT, '.gumball-settings.json');
 const MAX_PENDING_MESSAGES = 500;
 const MAX_FLUSH_BATCH = MAX_BATCH * 4;
@@ -43,8 +45,25 @@ let processingBatch = false;
 let lastQueueWarning = 0;
 let currentGameTitle = '';
 
+// Con PANEL_PASSWORD, el panel y la API piden contraseña (HTTP Basic). El overlay, los instructivos y sus
+// recursos siguen públicos para que OBS pueda cargarlos, y sus WebSockets son de solo lectura.
+const PANEL_PASSWORD = String(process.env.PANEL_PASSWORD || '');
+const PUBLIC_PATHS = /^\/(overlay|instructivos)(\/|$)|^\/(vendor|shared|brand)\/|^\/health$/;
+function authorized(req) {
+  if (!PANEL_PASSWORD) return true;
+  const [scheme, encoded] = String(req.headers.authorization || '').split(' ');
+  if (scheme !== 'Basic' || !encoded) return false;
+  const password = Buffer.from(encoded, 'base64').toString('utf8').split(':').slice(1).join(':');
+  const given = crypto.createHash('sha256').update(password).digest(), expected = crypto.createHash('sha256').update(PANEL_PASSWORD).digest();
+  return crypto.timingSafeEqual(given, expected);
+}
+
 const httpServer = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  if (!PUBLIC_PATHS.test(url.pathname) && !authorized(req)) {
+    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Gumball Chat panel", charset="UTF-8"', 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Gumball Chat panel: password required.');
+  }
   if (url.pathname === '/health') return json(res, 200, { ok: true, mode: CHAT_MODE, messages: messages.length, queued: incomingMessages.length, processing: processingBatch });
   if (url.pathname === '/api/state') return json(res, 200, state());
   if (url.pathname === '/api/ai/status') return json(res, 200, getAiStatus());
@@ -150,15 +169,21 @@ const httpServer = http.createServer((req, res) => {
   serveStatic(url.pathname, res);
 });
 
-const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+const READ_ONLY_CLIENTS = new Set(['overlay', 'viewer']);
+const wss = new WebSocketServer({
+  server: httpServer, path: '/ws',
+  verifyClient: ({ req }) => READ_ONLY_CLIENTS.has(new URL(req.url, 'http://localhost').searchParams.get('client')) || authorized(req)
+});
 wss.on('connection', (socket, request) => {
-  socket.clientType = new URL(request.url, 'http://localhost').searchParams.get('client') === 'overlay' ? 'overlay' : 'panel';
+  const client = new URL(request.url, 'http://localhost').searchParams.get('client');
+  socket.clientType = READ_ONLY_CLIENTS.has(client) ? client : 'panel';
   clients.add(socket);
   socket.send(JSON.stringify({ type: 'state', data: state() }));
   socket.send(JSON.stringify({ type: 'ai-status', status: getAiStatus() }));
   if (socket.clientType === 'panel') socket.send(JSON.stringify({ type: 'twitch-status', ...twitchSnapshot() }));
   if (socket.clientType === 'panel') for (const entry of flowLogHistory) socket.send(JSON.stringify({ type: 'message-log', entry }));
   socket.on('message', raw => {
+    if (socket.clientType !== 'panel') return;
     try { handleCommand(socket, JSON.parse(raw.toString())); }
     catch { socket.send(JSON.stringify({ type: 'notice', code: 'invalid_command' })); }
   });

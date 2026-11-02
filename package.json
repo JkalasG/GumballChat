@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "Twitch chat ideas become physical gumballs for a stream overlay",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node server/index.js",
     "smoke": "node scripts/smoke-check.js"

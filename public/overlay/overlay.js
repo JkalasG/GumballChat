@@ -91,7 +91,7 @@
     return {x:g.cx,y:g.cy+inner*.45};
   }
   function connect(){
-    socket=new WebSocket(`ws://${location.host}/ws?client=overlay`);
+    socket=new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?client=overlay`);
     socket.onopen=()=>{status.textContent=window.I18N.t('overlay.ready');status.classList.remove('warn')};
     socket.onclose=()=>{status.textContent=window.I18N.t('overlay.reconnecting');status.classList.add('warn');setTimeout(connect,1400)};
     socket.onerror=()=>socket.close();

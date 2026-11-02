@@ -11,6 +11,6 @@
     document.documentElement.lang=active;
   }
   fetch('/api/settings').then(response=>response.json()).then(settings=>apply(settings.uiLanguage)).catch(()=>apply());
-  const socket=new WebSocket(`ws://${location.host}/ws`);
+  const socket=new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?client=viewer`);
   socket.addEventListener('message',event=>{const data=JSON.parse(event.data);if(data.type==='settings')apply(data.settings.uiLanguage);if(data.type==='state'&&data.data.settings)apply(data.data.settings.uiLanguage);});
 })();

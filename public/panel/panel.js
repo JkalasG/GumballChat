@@ -1,7 +1,7 @@
 const categoryLabels = Object.fromEntries(['pista','spoiler','prediccion','animo','reto'].map(key => [key, window.I18N.t('card.category.' + key)]));
 const t = (key, vars) => window.I18N.t(key, vars);
 const state = { messages: [], languageCounts: {}, filter: 'all' };
-const socket = new WebSocket(`ws://${location.host}/ws`);
+const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
 let settings = null;
 let gameSaveTimer;
 let editingGameTitle = false;
