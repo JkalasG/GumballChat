@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Gumball Chat · Log in</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-64.png">
+  <link rel="stylesheet" href="/shared/theme.css"><link rel="stylesheet" href="/login/login.css">
+</head>
+<body class="login-page">
+  <div class="gumballs" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <main class="login-card">
+    <img class="login-logo" src="/brand/gumball-chat-icon-128.png" alt="" width="96" height="96">
+    <h1>Gumball <span>Chat</span></h1>
+    <p class="login-subtitle" data-t="subtitle">Streamer panel</p>
+    <p class="login-error" id="login-error" role="alert" hidden></p>
+    <form method="post" id="login-form" autocomplete="on">
+      <label><span data-t="user">Username</span><input name="user" autocomplete="username" required autofocus></label>
+      <label><span data-t="password">Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+      <button type="submit" data-t="submit">Log in</button>
+    </form>
+    <p class="login-note"><span data-t="note">The OBS overlay needs no login:</span> <a href="/overlay" target="_blank" rel="noopener">/overlay</a></p>
+  </main>
+  <script src="/login/login.js"></script>
+</body>
+</html>

@@ -45,25 +45,69 @@ let processingBatch = false;
 let lastQueueWarning = 0;
 let currentGameTitle = '';
 
-// Con PANEL_PASSWORD, el panel y la API piden contraseña (HTTP Basic). El overlay, los instructivos y sus
-// recursos siguen públicos para que OBS pueda cargarlos, y sus WebSockets son de solo lectura.
+// Con PANEL_PASSWORD, el panel y la API exigen iniciar sesión en /login (cookie de sesión). El overlay, los
+// instructivos y sus recursos siguen públicos para que OBS pueda cargarlos, y sus WebSockets son de solo lectura.
+const PANEL_USER = String(process.env.PANEL_USER || 'admin');
 const PANEL_PASSWORD = String(process.env.PANEL_PASSWORD || '');
-const PUBLIC_PATHS = /^\/(overlay|instructivos)(\/|$)|^\/(vendor|shared|brand)\/|^\/health$/;
+const PUBLIC_PATHS = /^\/(overlay|instructivos|login)(\/|$)|^\/(vendor|shared|brand)\/|^\/health$/;
+const SESSION_MS = 12 * 60 * 60 * 1000;
+const sessions = new Map();
+const loginFailures = new Map();
+const sameSecret = (given, expected) => crypto.timingSafeEqual(crypto.createHash('sha256').update(String(given)).digest(), crypto.createHash('sha256').update(expected).digest());
+function sessionToken(req) {
+  const match = String(req.headers.cookie || '').match(/(?:^|;\s*)gc_session=([a-f0-9]{64})/);
+  return match ? match[1] : null;
+}
 function authorized(req) {
   if (!PANEL_PASSWORD) return true;
+  const token = sessionToken(req), expires = token && sessions.get(token);
+  if (expires && expires > Date.now()) return true;
+  if (token) sessions.delete(token);
+  // Las herramientas de línea de comandos pueden seguir usando HTTP Basic con las mismas credenciales.
   const [scheme, encoded] = String(req.headers.authorization || '').split(' ');
   if (scheme !== 'Basic' || !encoded) return false;
-  const password = Buffer.from(encoded, 'base64').toString('utf8').split(':').slice(1).join(':');
-  const given = crypto.createHash('sha256').update(password).digest(), expected = crypto.createHash('sha256').update(PANEL_PASSWORD).digest();
-  return crypto.timingSafeEqual(given, expected);
+  const [user, ...rest] = Buffer.from(encoded, 'base64').toString('utf8').split(':');
+  return sameSecret(user, PANEL_USER) && sameSecret(rest.join(':'), PANEL_PASSWORD);
+}
+function handleLogin(req, res, url) {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  const failures = (loginFailures.get(ip) || []).filter(at => Date.now() - at < 10 * 60 * 1000);
+  const next = /^\/(?!\/)[\w\-/#?=&.]*$/.test(url.searchParams.get('next') || '') ? url.searchParams.get('next') : '/';
+  if (failures.length >= 8) { res.writeHead(303, { Location: `/login?error=locked&next=${encodeURIComponent(next)}` }); return res.end(); }
+  let body = '';
+  req.on('data', chunk => { body += chunk; if (body.length > 2000) req.destroy(); });
+  req.on('end', () => {
+    const form = new URLSearchParams(body);
+    if (!sameSecret(form.get('user') || '', PANEL_USER) || !sameSecret(form.get('password') || '', PANEL_PASSWORD)) {
+      loginFailures.set(ip, [...failures, Date.now()]);
+      res.writeHead(303, { Location: `/login?error=1&next=${encodeURIComponent(next)}` });
+      return res.end();
+    }
+    loginFailures.delete(ip);
+    const token = crypto.randomBytes(32).toString('hex');
+    sessions.set(token, Date.now() + SESSION_MS);
+    const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+    res.writeHead(303, { Location: next, 'Set-Cookie': `gc_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MS / 1000}${secure}` });
+    res.end();
+  });
 }
 
 const httpServer = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  if (!PUBLIC_PATHS.test(url.pathname) && !authorized(req)) {
-    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Gumball Chat panel", charset="UTF-8"', 'Content-Type': 'text/plain; charset=utf-8' });
-    return res.end('Gumball Chat panel: password required.');
+  if (url.pathname === '/login' && req.method === 'POST') return handleLogin(req, res, url);
+  if (url.pathname === '/logout') {
+    const token = sessionToken(req); if (token) sessions.delete(token);
+    res.writeHead(303, { Location: PANEL_PASSWORD ? '/login' : '/', 'Set-Cookie': 'gc_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0' });
+    return res.end();
   }
+  if (url.pathname === '/login' && !PANEL_PASSWORD) { res.writeHead(303, { Location: '/' }); return res.end(); }
+  if (!PUBLIC_PATHS.test(url.pathname) && !authorized(req)) {
+    // Las páginas redirigen al inicio de sesión; la API responde 401.
+    if (url.pathname.startsWith('/api/')) return json(res, 401, { ok: false, error: 'login_required' });
+    res.writeHead(303, { Location: `/login?next=${encodeURIComponent(url.pathname + url.search)}` });
+    return res.end();
+  }
+  if (url.pathname === '/api/session') return json(res, 200, { loginEnabled: Boolean(PANEL_PASSWORD), user: PANEL_PASSWORD ? PANEL_USER : null });
   if (url.pathname === '/health') return json(res, 200, { ok: true, mode: CHAT_MODE, messages: messages.length, queued: incomingMessages.length, processing: processingBatch });
   if (url.pathname === '/api/state') return json(res, 200, state());
   if (url.pathname === '/api/ai/status') return json(res, 200, getAiStatus());
@@ -556,6 +600,7 @@ function serveStatic(urlPath, res) {
   else if (route === '/panel') route = '/panel/index.html';
   else if (route === '/overlay') route = '/overlay/index.html';
   else if (route === '/instructivos') route = '/instructivos/index.html';
+  else if (route === '/login') route = '/login/index.html';
   const target = path.resolve(PUBLIC, `.${decodeURIComponent(route)}`);
   if (!target.startsWith(PUBLIC + path.sep)) return json(res, 403, { error: 'Prohibido' });
   fs.readFile(target, (error, data) => {

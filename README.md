@@ -25,7 +25,8 @@ Every big stream has the same problem: the best message in chat (the hint that s
 | Links | |
 | --- | --- |
 | Devpost | _add the project link_ |
-| Streamer panel | <http://localhost:3000/> |
+| Live demo | <https://gumballchat.onrender.com> (see [Try it live](#try-it-live)) |
+| Streamer panel (local) | <http://localhost:3000/> |
 | OBS overlay (transparent) | <http://localhost:3000/overlay> |
 | Viewer instructions (transparent) | <http://localhost:3000/instructivos> |
 | Brand assets | [assets/](assets/) |
@@ -57,6 +58,22 @@ Every big stream has the same problem: the best message in chat (the hint that s
 **4. Every message is traceable.** The live console follows each message through every stage. Below, a prompt-injection attempt is received, translated by Gemini and blocked by the safety filter.
 
 ![Live activity console tracing one message](docs/media/console.jpg)
+
+## Try it live
+
+A hosted demo runs on Render: **<https://gumballchat.onrender.com>**
+
+| Page | URL | Login |
+| --- | --- | --- |
+| Streamer panel | <https://gumballchat.onrender.com/> | Username `judge` · Password `gumball-demo-2026` |
+| OBS overlay | <https://gumballchat.onrender.com/overlay> | None (public, read-only) |
+| Viewer instructions | <https://gumballchat.onrender.com/instructivos> | None (public, read-only) |
+
+1. Open the overlay in one tab and the panel in another, then log in to the panel.
+2. Press **50 gumballs** and then **Draw a gumball** to watch a reveal.
+3. To test with real chat, type **your own** Twitch channel in the connection bar, press **Connect**, and write `&hint something useful` in your chat.
+
+> The demo runs on Render's free plan: after 15 minutes without visits it sleeps, and the first load can take about 50 seconds. These demo credentials are shared for judging and will be rotated afterwards.
 
 ## Quick start (2 minutes, no credentials)
 
@@ -146,7 +163,7 @@ The panel's **Settings** page controls everything shown on stream, and changes a
 | `STREAMER_LANGUAGE` | Language messages are translated into. |
 | `UI_LANGUAGE` | Initial interface language (`en` or `es`). |
 | `PORT`, `HOST` | Default `3000` and `127.0.0.1` (this computer only). On Render, `HOST` defaults to `0.0.0.0`. |
-| `PANEL_PASSWORD` | Optional. When set, the panel and API ask for this password (any username). The overlay and viewer pages stay public for OBS and are read-only. |
+| `PANEL_USER`, `PANEL_PASSWORD` | Optional login for hosting online. When `PANEL_PASSWORD` is set, the panel and API require signing in at `/login` (`PANEL_USER` defaults to `admin`). The overlay and viewer pages stay public for OBS and are read-only. |
 
 ## Twitch integration
 
@@ -233,7 +250,7 @@ Parts of the later visual redesign, the Twitch connection manager and the brand 
 ## Privacy and security
 
 - Secrets live only in `.env`, which git ignores; the panel and overlay never receive the Gemini key or Twitch token.
-- The server listens on `127.0.0.1` by default. When you host it online, set `PANEL_PASSWORD`: the panel and API then require it, while the overlay stays public and read-only.
+- The server listens on `127.0.0.1` by default. When you host it online, set `PANEL_USER` and `PANEL_PASSWORD`: the panel and API then require signing in (sessions last 12 h, and repeated failed attempts are blocked for 10 minutes), while the overlay stays public and read-only.
 - Chat text is treated as untrusted data: the AI prompt ignores instructions inside messages, and local safety filters run before anything reaches the machine.
 
 ## Credits and license

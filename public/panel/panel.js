@@ -195,3 +195,6 @@ window.addEventListener('gumball-ui-language', loadSamples);
 fetch('/api/ai/status').then(response => response.json()).then(renderAiStatus).catch(() => {});
 fetch('/api/game-context').then(response => response.json()).then(data => { document.querySelector('#game-title').value = data.gameTitle || ''; }).catch(() => {});
 fetch('/api/settings').then(response => response.json()).then(data => updateStreamerLanguage(data.streamerLanguage)).catch(() => {});
+
+// El enlace para cerrar sesión solo se muestra cuando el panel está protegido con PANEL_PASSWORD.
+fetch('/api/session').then(response => response.json()).then(session => { document.querySelector('#logout-link').hidden = !session.loginEnabled; }).catch(() => {});

@@ -1,0 +1,41 @@
+*{box-sizing:border-box}
+html,body{min-height:100%;margin:0}
+.login-page{display:grid;place-items:center;min-height:100vh;padding:24px 16px;overflow:hidden;
+  background:radial-gradient(circle at 50% 35%,rgba(127,240,207,.28),transparent 55%),linear-gradient(135deg,#0f6e61 0%,#074c44 55%,#03302a 100%);
+  font-family:'Bricolage Grotesque',sans-serif;color:#25231f}
+.login-page:before{content:"";position:fixed;inset:-50%;background:repeating-linear-gradient(-45deg,transparent 0 40px,rgba(255,255,255,.035) 40px 80px);pointer-events:none}
+
+/* Bolitas de fondo que flotan despacio, con los colores de las cinco categorías. */
+.gumballs i{position:fixed;width:var(--s);height:var(--s);border-radius:50%;left:var(--x);top:var(--y);opacity:.5;filter:blur(1px);
+  background:radial-gradient(circle at 34% 28%,#fff 0 6%,var(--c) 40%,color-mix(in srgb,var(--c) 55%,#000) 100%);animation:float 9s ease-in-out infinite alternate;animation-delay:var(--d)}
+.gumballs i:nth-child(1){--c:#FFD23F;--s:58px;--x:8%;--y:14%;--d:0s}
+.gumballs i:nth-child(2){--c:#FF5A36;--s:36px;--x:22%;--y:72%;--d:-2s}
+.gumballs i:nth-child(3){--c:#FF6FB5;--s:70px;--x:82%;--y:18%;--d:-4s}
+.gumballs i:nth-child(4){--c:#8A5CF6;--s:44px;--x:88%;--y:66%;--d:-1s}
+.gumballs i:nth-child(5){--c:#3A3147;--s:30px;--x:66%;--y:88%;--d:-3s}
+.gumballs i:nth-child(6){--c:#FFD23F;--s:26px;--x:40%;--y:6%;--d:-5s}
+.gumballs i:nth-child(7){--c:#8A5CF6;--s:52px;--x:4%;--y:52%;--d:-6s}
+.gumballs i:nth-child(8){--c:#FF6FB5;--s:24px;--x:56%;--y:78%;--d:-2.5s}
+.gumballs i:nth-child(9){--c:#FF5A36;--s:40px;--x:72%;--y:4%;--d:-7s}
+.gumballs i:nth-child(10){--c:#3A3147;--s:34px;--x:30%;--y:34%;--d:-3.5s}
+@keyframes float{to{transform:translate(18px,-26px)}}
+
+.login-card{position:relative;width:min(400px,100%);padding:36px 32px 26px;border-radius:24px;background:#FFF6D7;text-align:center;
+  box-shadow:0 10px 0 #b9ad8f,0 30px 60px rgba(0,0,0,.4);animation:pop .55s cubic-bezier(.2,1.4,.4,1) both}
+@keyframes pop{from{opacity:0;transform:translateY(24px) scale(.94)}}
+.login-logo{display:block;width:96px;height:96px;margin:-84px auto 10px;border-radius:24px;border:4px solid #FFF6D7;box-shadow:0 10px 24px rgba(3,48,42,.45)}
+.login-card h1{margin:0;color:#0F7C6E;font:400 42px/1 'Bagel Fat One',serif}
+.login-card h1 span{color:#FF5A36}
+.login-subtitle{margin:6px 0 20px;color:#655F52;font-size:14px;font-weight:600;letter-spacing:.02em}
+.login-error{margin:0 0 14px;padding:10px 12px;border-radius:10px;background:#fdebe7;border:1px solid #e9a597;color:#8f2b1d;font-size:13px;font-weight:700}
+form{display:grid;gap:14px;text-align:left}
+label{display:grid;gap:6px;color:#3d3a33;font-size:13px;font-weight:700}
+input{width:100%;padding:12px 14px;border:1.5px solid #d7d0bd;border-radius:12px;background:#fffdf6;color:#25231f;font:600 15px 'Bricolage Grotesque',sans-serif;outline:none;transition:border-color .15s,box-shadow .15s}
+input:focus{border-color:#0F7C6E;box-shadow:0 0 0 4px rgba(15,124,110,.16)}
+button{margin-top:6px;padding:13px 16px;border:0;border-radius:12px;background:#0F7C6E;color:#FFF6D7;font:400 19px 'Bagel Fat One',serif;letter-spacing:.02em;cursor:pointer;box-shadow:0 5px 0 #07564E;transition:transform .1s,box-shadow .1s,background-color .15s}
+button:hover{background:#13917f}
+button:active{transform:translateY(3px);box-shadow:0 2px 0 #07564E}
+button:focus-visible{outline:3px solid #FFD23F;outline-offset:3px}
+.login-note{margin:20px 0 0;color:#7a7364;font-size:12px}
+.login-note a{color:#0F7C6E;font-weight:700}
+@media(prefers-reduced-motion:reduce){.gumballs i,.login-card{animation:none}}

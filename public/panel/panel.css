@@ -70,3 +70,5 @@
 @media(prefers-reduced-motion:reduce){.twitch-bar .twitch-led{animation:none!important}}
 
 .brand-logo{display:block;width:40px;height:40px;border-radius:11px;box-shadow:0 3px 8px rgba(7,86,78,.25)}
+
+.logout-link{display:flex;align-items:center;gap:6px;margin-top:12px;padding:8px 10px;border:1px solid #ded6c1;border-radius:9px;color:#8f2b1d;font-size:12.5px;font-weight:700;text-decoration:none}.logout-link:hover{background:#fdebe7;border-color:#e9a597}.logout-link[hidden]{display:none}

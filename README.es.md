@@ -25,7 +25,8 @@ En los directos grandes siempre pasa lo mismo: el mejor mensaje del chat se pier
 | Enlaces | |
 | --- | --- |
 | Devpost | _añade el enlace del proyecto_ |
-| Panel del streamer | <http://localhost:3000/> |
+| Demo en vivo | <https://gumballchat.onrender.com> (ver [Pruébalo en vivo](#pruébalo-en-vivo)) |
+| Panel del streamer (local) | <http://localhost:3000/> |
 | Overlay de OBS (transparente) | <http://localhost:3000/overlay> |
 | Instrucciones para el chat (transparente) | <http://localhost:3000/instructivos> |
 | Recursos de marca | [assets/](assets/) |
@@ -57,6 +58,22 @@ En los directos grandes siempre pasa lo mismo: el mejor mensaje del chat se pier
 **4. Cada mensaje se puede rastrear.** La consola en vivo sigue cada mensaje por todas sus etapas. En la imagen, un intento de prompt injection: se recibe, Gemini lo traduce y el filtro de seguridad lo bloquea.
 
 ![Consola de actividad siguiendo un mensaje](docs/media/console.jpg)
+
+## Pruébalo en vivo
+
+Hay una demo publicada en Render: **<https://gumballchat.onrender.com>**
+
+| Página | URL | Acceso |
+| --- | --- | --- |
+| Panel del streamer | <https://gumballchat.onrender.com/> | Usuario `judge` · Contraseña `gumball-demo-2026` |
+| Overlay de OBS | <https://gumballchat.onrender.com/overlay> | Libre (público, solo lectura) |
+| Instrucciones para el chat | <https://gumballchat.onrender.com/instructivos> | Libre (público, solo lectura) |
+
+1. Abre el overlay en una pestaña y el panel en otra, e inicia sesión en el panel.
+2. Pulsa **50 bolitas** y luego **Sacar una bolita** para ver una revelación.
+3. Para probar con chat real, escribe **tu propio** canal de Twitch en la barra de conexión, pulsa **Conectar** y escribe `&pista algo útil` en tu chat.
+
+> La demo usa el plan gratuito de Render: tras 15 minutos sin visitas se duerme y la primera carga puede tardar unos 50 segundos. Estas credenciales de demostración son para la evaluación y se cambiarán después.
 
 ## Inicio rápido (2 minutos, sin credenciales)
 
@@ -146,7 +163,7 @@ La página **Configuración** del panel controla todo lo que se ve en el directo
 | `STREAMER_LANGUAGE` | Idioma al que se traducen los mensajes. |
 | `UI_LANGUAGE` | Idioma inicial de la interfaz (`en` o `es`). |
 | `PORT`, `HOST` | Predeterminados `3000` y `127.0.0.1` (solo este equipo). En Render, `HOST` pasa a `0.0.0.0`. |
-| `PANEL_PASSWORD` | Opcional. Si se define, el panel y la API piden esta contraseña (cualquier usuario). El overlay y la página de instrucciones siguen públicos para OBS y son de solo lectura. |
+| `PANEL_USER`, `PANEL_PASSWORD` | Inicio de sesión opcional para publicarlo en internet. Si defines `PANEL_PASSWORD`, el panel y la API exigen entrar por `/login` (`PANEL_USER` es `admin` por defecto). El overlay y la página de instrucciones siguen públicos para OBS y son de solo lectura. |
 
 ## Integración con Twitch
 
@@ -233,7 +250,7 @@ Parte del rediseño visual posterior, el gestor de conexión con Twitch y los re
 ## Privacidad y seguridad
 
 - Los secretos solo están en `.env`, que git ignora; el panel y el overlay nunca reciben la clave de Gemini ni el token de Twitch.
-- El servidor escucha en `127.0.0.1` por defecto. Si lo publicas en internet, define `PANEL_PASSWORD`: el panel y la API la pedirán, y el overlay seguirá público y de solo lectura.
+- El servidor escucha en `127.0.0.1` por defecto. Si lo publicas en internet, define `PANEL_USER` y `PANEL_PASSWORD`: el panel y la API exigirán iniciar sesión (la sesión dura 12 h y los intentos fallidos repetidos se bloquean 10 minutos), y el overlay seguirá público y de solo lectura.
 - El texto del chat se trata como dato no confiable: el prompt de la IA ignora las instrucciones que vengan dentro de los mensajes, y los filtros locales de seguridad se aplican antes de que algo llegue a la máquina.
 
 ## Créditos y licencia
