@@ -2,3 +2,6 @@ node_modules/
 .env
 .gumball-settings.json
 npm-debug.log*
+
+# Large rendered videos: upload to YouTube instead of committing
+assets/video/*.webm

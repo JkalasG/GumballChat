@@ -1,14 +1,20 @@
 const CATEGORIES = new Set(['pista', 'spoiler', 'prediccion', 'animo', 'reto', 'descartar']);
 
-function shouldDrop(text) {
+function dropReason(text) {
   const value = String(text || '').trim();
-  if (!value || value.length < 4 || value.length > 260) return true;
-  if (/^(\s|\p{Extended_Pictographic})+$/u.test(value)) return true;
-  if (/^(.)\1{5,}$/u.test(value)) return true;
-  if (/^(pogchamp|lul|omegalul|kreygasm|monkas|pepega|sadge|4head|catjam|peepo|copium|kekw|kappa|pog)(?:\s+\1)*$/iu.test(value)) return true;
-  if (/^(\w+)(?:\s+\1){3,}$/iu.test(value)) return true;
-  if (/^(lol|lmao|(?:ja){3,}|(?:je){3,}|(?:ha){3,}|(?:xd){2,}|k{4,}|(?:rs){2,}|www+|pog+|kappa+)$/iu.test(value)) return true;
-  return false;
+  if (!value) return 'vacío';
+  if (value.length < 4) return 'menos de 4 caracteres';
+  if (value.length > 260) return 'más de 260 caracteres';
+  if (/^(\s|\p{Extended_Pictographic})+$/u.test(value)) return 'solo espacios o emojis';
+  if (/^(.)\1{5,}$/u.test(value)) return 'un carácter repetido';
+  if (/^(pogchamp|lul|omegalul|kreygasm|monkas|pepega|sadge|4head|catjam|peepo|copium|kekw|kappa|pog)(?:\s+\1)*$/iu.test(value)) return 'solo emotes de ruido';
+  if (/^(\w+)(?:\s+\1){3,}$/iu.test(value)) return 'una palabra repetida';
+  if (/^(lol|lmao|(?:ja){3,}|(?:je){3,}|(?:ha){3,}|(?:xd){2,}|k{4,}|(?:rs){2,}|www+|pog+|kappa+)$/iu.test(value)) return 'ruido repetido';
+  return null;
+}
+
+function shouldDrop(text) {
+  return dropReason(text) !== null;
 }
 
 function isSafe(text) {
@@ -28,7 +34,7 @@ function classify(text) {
   if (/\b(spoiler|final boss|plot twist|muere al final|se muere|el asesino es|ending|secret ending|o chefe final|chef[aã]o final|spoiler|le boss final|spoiler)\b/i.test(t)) return 'spoiler';
   if (/\b(predigo|predicci[oó]n|apuesto que|seguro que|va a morir|you will die|i predict|bet you|je pr[eé]dis|je parie|eu prevejo|aposto que|予言|きっと)\b/i.test(t)) return 'prediccion';
   if (/défi/i.test(t)) return 'reto';
-  if (/\b(reto|challenge|desaf[ií]o|défi|tente|try to|sem pular|sin saltar|no uses|hazlo con|do it without|sans sauter|挑戦)\b/i.test(t)) return 'reto';
+  if (/\b(reto|challenge|desaf[ií]o|défi|tente|try to|i dare you to|dare you to|sem pular|sin saltar|no uses|hazlo con|do it without|sans sauter|挑戦)\b/i.test(t)) return 'reto';
   if (/\b(ánimo|animo|tú puedes|tu puedes|vamos|you got this|good luck|te queremos|great job|eres genial|força|voc[eê] consegue|bonne chance|tu peux le faire)\b/i.test(t) || /頑張って|あなたならできる/u.test(t)) return 'animo';
   if (/\b(pista|consejo|usa|ve a|busca|llave|puerta|hint|tip|go to|look for|try|behind|debajo|izquierda|derecha|chave|porta|procure|dica|indice|cl[eé]|derri[eè]re)\b/i.test(t)) return 'pista';
   return 'descartar';
@@ -55,4 +61,4 @@ function analyze(text) {
   };
 }
 
-module.exports = { shouldDrop, isSafe, analyze, CATEGORIES };
+module.exports = { shouldDrop, dropReason, isSafe, analyze, CATEGORIES };

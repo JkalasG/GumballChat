@@ -34,7 +34,7 @@
     document.getElementById('instructions-url').value=`${location.origin}/instructivos`;
     renderCategories(card.categories);
     const preview=document.getElementById('preview-category');for(const option of preview.options)option.textContent=t('card.category.'+option.value);
-    const mode=document.getElementById('twitch-mode');mode.textContent=document.body.dataset.chatMode||'Simulator';
+    
     if(!document.querySelector('#profile-language'))return;
     document.querySelector('#profile-language').textContent=`${t('panel.streamerLanguage')} · ${t(`lang.${settings.streamerLanguage}`)}`;
   }
@@ -73,8 +73,6 @@
   document.getElementById('settings-reset').addEventListener('click',async()=>{try{const response=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reset:true})});const result=await response.json();if(!response.ok)throw new Error(t(`errors.${result.error||'invalid_settings'}`));paint(result.settings);toast(t('panel.resetDone'));}catch(error){toast(error.message);}});
   document.getElementById('settings-preview').addEventListener('click',async()=>{try{await save();if(configSocket.readyState===WebSocket.OPEN)configSocket.send(JSON.stringify({type:'preview-card',category:document.getElementById('preview-category').value}));}catch(error){toast(error.message);}});
   document.getElementById('streamer-language').addEventListener('change',async e=>{try{await save({streamerLanguage:e.target.value});}catch(error){toast(error.message);}});
-  document.getElementById('connect-twitch-settings').addEventListener('click',()=>document.getElementById('connect-twitch').click());
   document.querySelectorAll('.copy-url').forEach(button=>button.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(document.getElementById(button.dataset.copy).value);toast(t('panel.copied'));}catch{toast(t('panel.copyFailed'));}}));
   for(const [id,out] of [['overlay-scale','overlay-scale-value'],['card-duration','card-duration-value'],['card-max-chars','card-max-chars-value']])document.getElementById(id).addEventListener('input',e=>document.getElementById(out).textContent=e.target.value);
-  fetch('/api/twitch/status').then(r=>r.json()).then(status=>{document.getElementById('twitch-mode').textContent=status.mode||'simulator';document.getElementById('twitch-channel').textContent=status.channel||'—';const label=status.connected?t('panel.twitchConnected'):t('panel.simulatorConnected');document.getElementById('connection-label').textContent=label;document.getElementById('twitch-connection-status').textContent=label;}).catch(()=>{});
 })();

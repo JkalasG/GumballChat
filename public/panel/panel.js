@@ -9,19 +9,15 @@ const languageNames = Object.fromEntries(['es','en','pt','fr','ja','de','ko'].ma
 
 socket.addEventListener('message', event => {
   const data = JSON.parse(event.data);
+  if (data.type === 'message-log') window.dispatchEvent(new CustomEvent('gumball-message-log', { detail: data.entry }));
   if (data.type === 'state') render(data.data);
-  if (data.type === 'notice') toast(data.message);
+  if (data.type === 'notice') toast(data.code ? t('notice.' + data.code) : data.message);
   if (data.type === 'opened') toast(t('panel.drawOpened'));
-  if (data.type === 'twitch-status') {
-    const label = data.connected ? t('panel.twitchConnected') : (data.error || t('panel.simulatorConnected'));
-    document.querySelector('#connection-label').textContent = label;
-    document.querySelector('#twitch-connection-status').textContent = label;
-  }
+  if (data.type === 'twitch-status') window.dispatchEvent(new CustomEvent('gumball-twitch-status', { detail: data }));
   if (data.type === 'ai-status') renderAiStatus(data.status);
   if (data.type === 'game-context' && !editingGameTitle) document.querySelector('#game-title').value = data.gameTitle || '';
   if (data.type === 'streamer-settings') updateStreamerLanguage(data.streamerLanguage);
 });
-socket.addEventListener('open', () => document.querySelector('#connection-label').textContent = t('panel.simulatorConnected'));
 window.addEventListener('gumball-ui-language', () => render({ messages: state.messages, languageCounts: state.languageCounts, selectedFilter: state.filter }));
 
 function send(command) {
@@ -86,7 +82,10 @@ function renderRepeatedMessages(messages) {
   }).join('') : `<div class="empty-language">${t('panel.noRepeats')}</div>`;
 }
 
+let lastAiStatus = null;
+window.addEventListener('gumball-ui-language', () => renderAiStatus(lastAiStatus));
 function renderAiStatus(status) {
+  lastAiStatus = status;
   const indicator = document.querySelector('#ai-status');
   const states = {
     active: ['active', t('panel.aiActive')],
@@ -120,8 +119,8 @@ async function simulate(author, text) {
     body: JSON.stringify({ author, text, gameTitle: document.querySelector('#game-title').value })
   });
   const result = await response.json();
-  if (!result.ok) toast(result.reason || result.error || 'El mensaje se descartó en el filtro local.');
-  else toast('Mensaje enviado al análisis; aparecerá si pasa los filtros.');
+  if (!result.ok) toast(t('ui.rejected', { reason: t('reason.' + (result.reason || result.error || 'noise')) }));
+  else toast(t('ui.sentToAnalysis'));
 }
 
 async function loadSamples() {
@@ -129,9 +128,9 @@ async function loadSamples() {
   try {
     const response = await fetch('/api/samples');
     const samples = await response.json();
-    select.replaceChildren(new Option('Elige un caso de prueba…', ''));
-    for (const sample of samples) select.add(new Option(`${flag(sample.language)} ${sample.label}`, sample.id));
-  } catch { select.replaceChildren(new Option('No se cargaron los ejemplos', '')); }
+    select.replaceChildren(new Option(t('ui.chooseSample'), ''));
+    for (const sample of samples) select.add(new Option(`${flag(sample.language)} ${window.I18N.current() === 'es' && sample.labelEs || sample.label}`, sample.id));
+  } catch { select.replaceChildren(new Option(t('ui.samplesFailed'), '')); }
 }
 
 document.querySelector('#filters').addEventListener('click', event => {
@@ -140,11 +139,11 @@ document.querySelector('#filters').addEventListener('click', event => {
 });
 document.querySelector('#draw-button').addEventListener('click', () => send({ type: 'draw', category: state.filter }));
 document.querySelector('#reveal-button').addEventListener('click', () => {
-  if (confirm('¿Abrir ahora todos los spoilers sellados en el overlay?')) send({ type: 'reveal-spoilers' });
+  if (confirm(t('ui.revealConfirm'))) send({ type: 'reveal-spoilers' });
 });
 document.querySelector('#send-sample').addEventListener('click', () => {
   const sampleId = document.querySelector('#sample-select').value;
-  if (!sampleId) return toast('Elige un mensaje de prueba.');
+  if (!sampleId) return toast(t('ui.pickSample'));
   fetch('/api/samples').then(response => response.json()).then(samples => {
     const sample = samples.find(item => item.id === sampleId);
     if (sample) return simulate(document.querySelector('#author-input').value || sample.author, sample.text);
@@ -158,8 +157,8 @@ document.querySelector('#fill-machine').addEventListener('click', async event =>
     const response = await fetch('/api/demo/fill', { method: 'POST' });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error || `Error ${response.status}`);
-    toast(`Añadimos ${result.added} bolitas aleatorias a la máquina.`);
-  } catch (error) { toast(`No se pudo llenar: ${error.message || 'error de conexión'}`); }
+    toast(t('ui.filled', { n: result.added }));
+  } catch (error) { toast(t('ui.fillFailed', { error: error.message || 'network' })); }
   finally { button.disabled = false; }
 });
 document.querySelector('#custom-message').addEventListener('keydown', event => { if (event.key === 'Enter') sendCustom(); });
@@ -170,14 +169,6 @@ function sendCustom() {
   input.value = '';
 }
 document.querySelector('#refresh').addEventListener('click', () => fetch('/api/state').then(response => response.json()).then(render));
-document.querySelector('#connect-twitch').addEventListener('click', async () => {
-  try {
-    const response = await fetch('/api/twitch/connect', { method: 'POST' });
-    const data = await response.json();
-    toast(data.message || data.error);
-    if (data.ok) document.querySelector('#connection-label').textContent = 'Conectando con Twitch…';
-  } catch { toast('No se pudo iniciar la conexión con Twitch.'); }
-});
 function saveGameContext() {
   clearTimeout(gameSaveTimer);
   return fetch('/api/game-context', {
@@ -200,6 +191,7 @@ function toast(message) {
 }
 
 loadSamples();
+window.addEventListener('gumball-ui-language', loadSamples);
 fetch('/api/ai/status').then(response => response.json()).then(renderAiStatus).catch(() => {});
 fetch('/api/game-context').then(response => response.json()).then(data => { document.querySelector('#game-title').value = data.gameTitle || ''; }).catch(() => {});
 fetch('/api/settings').then(response => response.json()).then(data => updateStreamerLanguage(data.streamerLanguage)).catch(() => {});

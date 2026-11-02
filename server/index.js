@@ -10,7 +10,7 @@ const { EventSubClient } = require('./chat/eventsub');
 const { AnonymousIrcClient } = require('./chat/anonymous-irc');
 const { createSimulator } = require('./chat/simulator');
 const { GumballState } = require('./state');
-const { shouldDrop, analyze } = require('./ai/local-fallback');
+const { dropReason, analyze } = require('./ai/local-fallback');
 const { classifyMessages, getStatus: getAiStatus, MAX_BATCH } = require('./ai/classifier');
 
 const PORT = Number(process.env.PORT || 3000);
@@ -35,6 +35,7 @@ const CHAT_MODE = ['anonymous', 'eventsub', 'simulator'].includes((process.env.C
 const store = new GumballState();
 const messages = store.messages;
 const clients = new Set();
+const flowLogHistory = [];
 const incomingMessages = [];
 const recentMessages = new Map();
 let batchTimer = null;
@@ -73,15 +74,24 @@ const httpServer = http.createServer((req, res) => {
       reto: ['Termina esta sala sin saltar.', 'Cruza el puente sin recibir daño.', 'Intenta vencerlo usando solo magia.', 'Haz el siguiente tramo hacia atrás.'],
       spoiler: ['El guardián final aparece tras la cascada.', 'La aliada era quien abrió la puerta.', 'Hay un final secreto después del jefe.', 'El mapa revela quién traicionó al grupo.']
     };
+    const samplesEn = {
+      pista: ['Look behind the old door.', 'The key opens the garden room.', 'Try the path on the left.', 'Check under the platform.'],
+      prediccion: ['I bet the boss changes phase.', 'The exit is up top for sure.', 'That statue is going to move.', 'Another wave of enemies is coming.'],
+      animo: ['You got this, almost there!', 'Come on, this run is yours.', 'Great try, keep going!', 'You are doing amazing.'],
+      reto: ['Finish this room without jumping.', 'Cross the bridge without taking damage.', 'Beat it using only magic.', 'Do the next part backwards.'],
+      spoiler: ['The final guardian shows up behind the waterfall.', 'Your ally opened the door all along.', 'There is a secret ending after the boss.', 'The map reveals who betrayed the team.']
+    };
+    const english = settings.uiLanguage === 'en';
+    if (english) Object.assign(samples, samplesEn);
     const categories = Object.keys(samples);
     for (let index = 0; index < 50; index++) {
       const category = categories[Math.floor(Math.random() * categories.length)];
       const choices = samples[category];
       const text = choices[Math.floor(Math.random() * choices.length)];
       const item = {
-        id: store.nextId(), author: `Invitado${String(index + 1).padStart(2, '0')}`,
+        id: store.nextId(), author: `${english ? 'Guest' : 'Invitado'}${String(index + 1).padStart(2, '0')}`,
         text, translatedText: text,
-        sourceLanguage: 'es', category, highlight: false, featured: false,
+        sourceLanguage: english ? 'en' : 'es', category, highlight: false, featured: false,
         status: 'pending', timestamp: Date.now() + index, source: 'demo'
       };
       store.add(item);
@@ -100,7 +110,7 @@ const httpServer = http.createServer((req, res) => {
         currentGameTitle = String(input.gameTitle || '').trim().slice(0, 100);
         broadcast({ type: 'game-context', gameTitle: currentGameTitle });
         json(res, 200, { ok: true, gameTitle: currentGameTitle });
-      } catch { json(res, 400, { ok: false, error: 'JSON inválido' }); }
+      } catch { json(res, 400, { ok: false, error: 'invalid_request' }); }
     });
     return;
   }
@@ -113,16 +123,30 @@ const httpServer = http.createServer((req, res) => {
         if (Object.hasOwn(input, 'gameTitle')) currentGameTitle = String(input.gameTitle || '').trim().slice(0, 100);
         const result = simulator.submit({ author: input.author || 'Invitado', text: input.text || '' });
         json(res, 200, { ok: result.accepted, queued: result.accepted, reason: result.accepted ? null : result.reason });
-      } catch { json(res, 400, { ok: false, error: 'JSON inválido' }); }
+      } catch { json(res, 400, { ok: false, error: 'invalid_request' }); }
     });
     return;
   }
   if (url.pathname === '/api/twitch/connect' && req.method === 'POST') {
-    if (!chatClient) return json(res, 400, { ok: false, error: 'CHAT_MODE=simulator está activo; selecciona anonymous o eventsub en .env para conectar Twitch.' });
-    chatClient.connect().then(result => json(res, result.ok ? 200 : 400, result));
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > 2000) req.destroy(); });
+    req.on('end', async () => {
+      let input;
+      try { input = JSON.parse(body || '{}'); } catch { return json(res, 400, { ok: false, error: 'invalid_request' }); }
+      const channel = normalizeChannel(input.channel || DEFAULT_CHANNEL);
+      if (!channel) return json(res, 400, { ok: false, error: 'invalid_channel' });
+      try {
+        const result = await connectTwitch(channel);
+        json(res, result.ok ? 200 : 400, result);
+      } catch { json(res, 500, { ok: false, error: 'connection_error' }); }
+    });
     return;
   }
-  if (url.pathname === '/api/twitch/status') return json(res, 200, { mode: CHAT_MODE, channel: process.env.TWITCH_CHANNEL_LOGIN || null, ...(chatClient?.status || { connected: false, configured: true }) });
+  if (url.pathname === '/api/twitch/disconnect' && req.method === 'POST') {
+    disconnectTwitch();
+    return json(res, 200, { ok: true });
+  }
+  if (url.pathname === '/api/twitch/status') return json(res, 200, twitchSnapshot());
   serveStatic(url.pathname, res);
 });
 
@@ -132,22 +156,129 @@ wss.on('connection', (socket, request) => {
   clients.add(socket);
   socket.send(JSON.stringify({ type: 'state', data: state() }));
   socket.send(JSON.stringify({ type: 'ai-status', status: getAiStatus() }));
+  if (socket.clientType === 'panel') socket.send(JSON.stringify({ type: 'twitch-status', ...twitchSnapshot() }));
+  if (socket.clientType === 'panel') for (const entry of flowLogHistory) socket.send(JSON.stringify({ type: 'message-log', entry }));
   socket.on('message', raw => {
     try { handleCommand(socket, JSON.parse(raw.toString())); }
-    catch { socket.send(JSON.stringify({ type: 'error', message: 'Comando inválido' })); }
+    catch { socket.send(JSON.stringify({ type: 'notice', code: 'invalid_command' })); }
   });
   socket.on('close', () => clients.delete(socket));
 });
 
 const simulator = createSimulator(acceptMessage);
-const eventSub = new EventSubClient({ acceptMessage, broadcast });
-const anonymousIrc = new AnonymousIrcClient({ acceptMessage, broadcast });
-const chatClient = CHAT_MODE === 'eventsub' ? eventSub : CHAT_MODE === 'anonymous' ? anonymousIrc : null;
+const eventSub = new EventSubClient({ acceptMessage: acceptTwitchMessage, broadcast: event => onClientStatus(eventSub, event) });
+const anonymousIrc = new AnonymousIrcClient({ acceptMessage: acceptTwitchMessage, broadcast: event => onClientStatus(anonymousIrc, event) });
+
+// Conexión con Twitch: un único canal activo. EventSub se usa para el canal configurado cuando CHAT_MODE=eventsub;
+// cualquier otro canal (o los modos anonymous/simulator) se lee con IRC anónimo de solo lectura.
+const DEFAULT_CHANNEL = normalizeChannel(process.env.TWITCH_CHANNEL_LOGIN);
+const twitch = { state: 'disconnected', channel: DEFAULT_CHANNEL, transport: null, error: null, detail: null, since: null, messages: 0, lastMessageAt: null, retryInMs: null };
+let activeChatClient = null;
+let twitchWanted = false;
+let twitchRetries = 0;
+let twitchRetryTimer = null;
+let twitchStatusTimer = null;
 
 httpServer.listen(PORT, HOST, () => {
   console.log(`Gumball Chat listo: http://localhost:${PORT}`);
   console.log(`Modo de chat: ${CHAT_MODE}. El simulador local sigue disponible.`);
+  if (DEFAULT_CHANNEL && CHAT_MODE !== 'simulator' && process.env.TWITCH_AUTOCONNECT !== 'false') {
+    console.log(`Conectando automáticamente con #${DEFAULT_CHANNEL}…`);
+    void connectTwitch(DEFAULT_CHANNEL);
+  }
 });
+
+function normalizeChannel(value) {
+  // Acepta "canal", "#canal", "@canal" o la URL del canal y devuelve el login en minúsculas.
+  const text = String(value || '').trim().replace(/^https?:\/\/(www\.|m\.)?twitch\.tv\//i, '').replace(/^(popout\/)?/, '').replace(/[/?#].*$/, '').replace(/^[#@]/, '').toLowerCase();
+  return /^[a-z0-9_]{1,25}$/.test(text) ? text : null;
+}
+
+function twitchSnapshot() {
+  return { mode: CHAT_MODE, defaultChannel: DEFAULT_CHANNEL, ...twitch, connected: twitch.state === 'connected', connecting: twitch.state === 'connecting' || twitch.state === 'reconnecting', configured: Boolean(DEFAULT_CHANNEL) };
+}
+
+function setTwitch(patch) {
+  Object.assign(twitch, patch);
+  clearTimeout(twitchStatusTimer);
+  twitchStatusTimer = null;
+  broadcast({ type: 'twitch-status', ...twitchSnapshot() });
+}
+
+async function connectTwitch(channel) {
+  clearTimeout(twitchRetryTimer);
+  twitchRetryTimer = null;
+  const previous = activeChatClient;
+  activeChatClient = null;
+  previous?.disconnect();
+  const client = CHAT_MODE === 'eventsub' && channel === DEFAULT_CHANNEL ? eventSub : anonymousIrc;
+  twitchWanted = true;
+  twitchRetries = 0;
+  setTwitch({ state: 'connecting', channel, transport: client === eventSub ? 'eventsub' : 'irc', error: null, detail: null, since: null, retryInMs: null, ...(channel !== twitch.channel ? { messages: 0, lastMessageAt: null } : {}) });
+  return startChatClient(client, channel);
+}
+
+async function startChatClient(client, channel) {
+  activeChatClient = client;
+  const result = await client.connect(channel);
+  if (!result.ok && activeChatClient === client) {
+    activeChatClient = null;
+    twitchWanted = false;
+    logFlow('twitch_error', { channel, code: result.error, detail: result.detail || null });
+    setTwitch({ state: 'error', error: result.error, detail: result.detail || null });
+  }
+  return result.ok ? { ok: true, channel, transport: twitch.transport } : result;
+}
+
+function disconnectTwitch() {
+  twitchWanted = false;
+  clearTimeout(twitchRetryTimer);
+  twitchRetryTimer = null;
+  const client = activeChatClient;
+  activeChatClient = null;
+  client?.disconnect();
+  if (twitch.state !== 'disconnected') logFlow('twitch_desconectado', { channel: twitch.channel });
+  setTwitch({ state: 'disconnected', error: null, detail: null, since: null, retryInMs: null });
+}
+
+// Los adaptadores informan conectado, error o cierre; aquí se decide el estado visible y si se reintenta.
+function onClientStatus(client, event) {
+  if (client !== activeChatClient) return;
+  const wasLive = twitch.state === 'connected' || twitch.state === 'reconnecting';
+  if (event.connected) {
+    twitchRetries = 0;
+    logFlow('twitch_conectado', { channel: twitch.channel, transport: twitch.transport });
+    setTwitch({ state: 'connected', error: null, detail: null, since: Date.now(), retryInMs: null });
+  } else if (event.error || event.closed) {
+    if (twitch.state === 'error') return;
+    const retryable = !event.error || ['connection_error', 'connection_timeout'].includes(event.error);
+    if (twitchWanted && wasLive && retryable) return scheduleTwitchRetry();
+    activeChatClient = null;
+    twitchWanted = false;
+    logFlow('twitch_error', { channel: twitch.channel, code: event.error || 'connection_lost', detail: event.detail || null });
+    setTwitch({ state: 'error', error: event.error || 'connection_lost', detail: event.detail || null, since: null, retryInMs: null });
+  }
+}
+
+function scheduleTwitchRetry() {
+  if (twitchRetryTimer) return;
+  const client = activeChatClient;
+  const delay = Math.min(30000, 2000 * 2 ** twitchRetries++);
+  logFlow('twitch_reconectando', { channel: twitch.channel, retryInMs: delay, attempt: twitchRetries });
+  setTwitch({ state: 'reconnecting', error: null, detail: null, retryInMs: delay });
+  twitchRetryTimer = setTimeout(() => {
+    twitchRetryTimer = null;
+    if (twitchWanted && activeChatClient === client) void startChatClient(client, twitch.channel);
+  }, delay);
+}
+
+function acceptTwitchMessage(message) {
+  twitch.messages++;
+  twitch.lastMessageAt = Date.now();
+  // El contador del panel se actualiza como máximo una vez por segundo aunque el chat vaya rápido.
+  if (!twitchStatusTimer) twitchStatusTimer = setTimeout(() => { twitchStatusTimer = null; broadcast({ type: 'twitch-status', ...twitchSnapshot() }); }, 1000);
+  return acceptMessage(message);
+}
 
 function handleCommand(socket, command) {
   if (command.type === 'preview-card') {
@@ -164,25 +295,28 @@ function handleCommand(socket, command) {
   if (command.type === 'draw') {
     const choices = messages.filter(message => message.status === 'pending' && message.category !== 'spoiler' && (command.category === 'all' || message.category === command.category));
     const item = choices[Math.floor(Math.random() * choices.length)];
-    if (!item) return socket.send(JSON.stringify({ type: 'notice', message: 'No hay bolitas disponibles con ese filtro.' }));
+    if (!item) return socket.send(JSON.stringify({ type: 'notice', code: 'no_gumballs' }));
     item.status = 'opened';
+    logFlow('abierto_en_stream', { id: item.id, author: item.author, category: item.category });
     broadcast({ type: 'opened', item });
     broadcast({ type: 'state', data: state() });
   } else if (command.type === 'open-id') {
     const item = messages.find(message => message.id === command.id && message.status === 'pending' && message.category !== 'spoiler');
-    if (!item) return socket.send(JSON.stringify({ type: 'notice', message: 'Esa bolita no se puede abrir.' }));
+    if (!item) return socket.send(JSON.stringify({ type: 'notice', code: 'cannot_open' }));
     item.status = 'opened';
+    logFlow('abierto_en_stream', { id: item.id, author: item.author, category: item.category });
     broadcast({ type: 'opened', item });
     broadcast({ type: 'state', data: state() });
   } else if (command.type === 'reveal-spoilers') {
     const batch = messages.filter(message => message.status === 'pending' && message.category === 'spoiler');
-    if (!batch.length) return socket.send(JSON.stringify({ type: 'notice', message: 'No hay spoilers sellados.' }));
+    if (!batch.length) return socket.send(JSON.stringify({ type: 'notice', code: 'no_spoilers' }));
     batch.forEach(item => { item.status = 'opened'; });
+    logFlow('revelacion_final', { cantidad: batch.length, ids: batch.map(item => item.id) });
     broadcast({ type: 'reveal-spoilers', items: batch });
     broadcast({ type: 'state', data: state() });
   } else if (command.type === 'discard') {
     const item = messages.find(message => message.id === command.id);
-    if (item) item.status = 'discarded';
+    if (item) { item.status = 'discarded'; logFlow('retirado_por_streamer', { id: item.id, author: item.author, category: item.category }); }
     broadcast({ type: 'state', data: state() });
   } else if (command.type === 'filter') {
     store.setFilter(command.category);
@@ -191,29 +325,47 @@ function handleCommand(socket, command) {
   }
 }
 
-function acceptMessage({ author, text, source = 'simulator' }) {
+function acceptMessage({ author, text, source = 'simulator', emotesRemoved = 0 }) {
   const rawText = String(text || '').trim();
   author = String(author || 'Invitado').trim().slice(0, 28) || 'Invitado';
+  const id = store.nextId();
+  logFlow('recibido', { id, source, author, text: rawText, ...(emotesRemoved ? { emotesRemoved } : {}) });
   if (process.env.GEMINI_API_KEY && (rawText.includes(process.env.GEMINI_API_KEY) || author.includes(process.env.GEMINI_API_KEY))) {
-    return { accepted: false, reason: 'Mensaje descartado por contener un secreto del servidor.' };
+    logFlow('descartado', { id, code: 'secret', etapa: 'protección de secretos', motivo: 'el contenido coincide con una clave configurada' });
+    return { accepted: false, reason: 'secret' };
   }
-  if (shouldDrop(rawText)) return { accepted: false, reason: 'Mensaje vacío, demasiado corto, largo o ruido repetido.' };
+  const rawDropReason = dropReason(rawText);
+  if (rawDropReason) {
+    logFlow('descartado', { id, code: 'noise', etapa: 'filtro rápido', motivo: rawDropReason });
+    return { accepted: false, reason: 'noise' };
+  }
   const tagged = parseCategoryTag(rawText);
   text = tagged.text;
-  if (shouldDrop(text)) return { accepted: false, reason: 'La etiqueta necesita un mensaje de al menos 4 caracteres.' };
+  if (tagged.category) logFlow('etiqueta_detectada', { id, etiqueta: tagged.category, texto: text });
+  else if (/^\s*&[\p{L}]+(?:\s|:|$)/u.test(rawText)) logFlow('etiqueta_ignorada', { id, motivo: 'etiqueta no reconocida; se clasificará automáticamente' });
+  const taggedDropReason = dropReason(text);
+  if (taggedDropReason) {
+    logFlow('descartado', { id, code: 'tag_too_short', etapa: 'validación tras etiqueta', motivo: taggedDropReason });
+    return { accepted: false, reason: 'tag_too_short' };
+  }
   const normalized = normalizeQuestion(text);
   const now = Date.now(), duplicateKey = `${author.toLowerCase()}\0${normalized}`, previous = recentMessages.get(duplicateKey);
-  if (previous && now - previous < 20000) return { accepted: false, reason: 'Mensaje duplicado.' };
+  if (previous && now - previous < 20000) {
+    logFlow('descartado', { id, code: 'duplicate', etapa: 'filtro de duplicados', motivo: 'mismo autor y texto dentro de 20 segundos' });
+    return { accepted: false, reason: 'duplicate' };
+  }
   if (incomingMessages.length >= MAX_PENDING_MESSAGES) {
     if (now - lastQueueWarning > 10000) {
       lastQueueWarning = now;
-      broadcast({ type: 'notice', message: 'La cola de análisis está llena por una ráfaga; espera un momento y vuelve a enviar.' });
+      broadcast({ type: 'notice', code: 'queue_full' });
     }
-    return { accepted: false, reason: 'La cola de análisis está temporalmente llena.' };
+    logFlow('descartado', { id, code: 'queue_full', etapa: 'cola de ráfaga', motivo: 'cola llena', pendientes: incomingMessages.length });
+    return { accepted: false, reason: 'queue_full' };
   }
   recentMessages.set(duplicateKey, now);
   if (recentMessages.size > 1000) for (const [key, timestamp] of recentMessages) if (now - timestamp > 20000) recentMessages.delete(key);
-  incomingMessages.push({ id: store.nextId(), author, text, categoryHint: tagged.category, source, timestamp: now, gameTitle: currentGameTitle });
+  incomingMessages.push({ id, author, text, categoryHint: tagged.category, source, timestamp: now, gameTitle: currentGameTitle });
+  logFlow('en_cola_de_analisis', { id, pendientes: incomingMessages.length, etiqueta: tagged.category || null, juego: currentGameTitle || null });
   if (incomingMessages.length >= MAX_BATCH) {
     clearTimeout(batchTimer);
     batchTimer = null;
@@ -235,22 +387,34 @@ async function flushIncomingMessages() {
         if (incomingMessages[index].gameTitle === batchTitle) batch.push(...incomingMessages.splice(index, 1));
         else index++;
       }
+      logFlow('lote_iniciado', { cantidad: batch.length, ids: batch.map(message => message.id), juego: batchTitle || null });
       let analyses;
       try {
         analyses = await classifyMessages(batch.map(({ id, text, categoryHint }) => ({ id, text, categoryHint })), {
           gameTitle: batchTitle,
           streamerLanguage,
-          onStatus: status => broadcast({ type: 'ai-status', status })
+          onStatus: status => broadcast({ type: 'ai-status', status }),
+          onLog: logFlow
         });
       } catch {
         analyses = batch.map(message => ({ id: message.id, ...analyze(message.text) }));
+        logFlow('gemini_error', { cantidad: batch.length, accion: 'se usará el clasificador local' });
         broadcast({ type: 'ai-status', status: { ...getAiStatus(), state: 'fallback', message: 'Error del clasificador; usando respaldo local' } });
       }
       const resultsById = new Map(analyses.map(result => [result.id, result]));
       for (const message of batch) {
         const result = resultsById.get(message.id);
-        if (!analyze(message.text).safe) continue;
-        if (!result || !result.keep || !result.safe || result.category === 'descartar') continue;
+        const localSafety = analyze(message.text).safe;
+        if (!localSafety) {
+          logFlow('descartado', { id: message.id, code: 'unsafe_local', etapa: 'filtro local de seguridad', motivo: 'detectó posible abuso, contenido sexual, datos personales o prompt injection', resultadoIA: result || null });
+          continue;
+        }
+        if (!result || !result.keep || !result.safe || result.category === 'descartar') {
+          const reason = !result ? 'sin resultado del clasificador' : !result.safe ? 'Gemini marcó el mensaje como no seguro' : !result.keep ? 'Gemini decidió no conservarlo' : 'categoría descartar';
+          const code = !result ? 'ai_no_result' : !result.safe ? 'ai_unsafe' : !result.keep ? 'ai_not_kept' : 'ai_discard';
+          logFlow('descartado', { id: message.id, code, etapa: 'decisión del clasificador', motivo: reason, resultadoIA: result || null });
+          continue;
+        }
         const item = {
           id: message.id,
           author: message.author,
@@ -265,6 +429,7 @@ async function flushIncomingMessages() {
           source: message.source
         };
         store.add(item);
+        logFlow('aceptado_en_maquina', { id: item.id, author: item.author, category: item.category, sourceLanguage: item.sourceLanguage, translatedText: item.translatedText, highlight: item.highlight });
         broadcast({ type: 'gum', item });
       }
       broadcast({ type: 'state', data: state() });
@@ -335,6 +500,26 @@ function broadcast(data) {
   for (const client of clients) if (client.readyState === 1) client.send(payload);
 }
 
+function logFlow(stage, details = {}) {
+  const secret = process.env.GEMINI_API_KEY;
+  function sanitize(value) {
+    if (typeof value === 'string') {
+      let text = value.replace(/[\r\n\u0000-\u001f]/g, ' ');
+      if (secret) text = text.split(secret).join('[clave omitida]');
+      return text.length > 500 ? `${text.slice(0, 500)}…[truncado]` : text;
+    }
+    if (Array.isArray(value)) return value.map(sanitize);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitize(item)]));
+    return value;
+  }
+  const entry = { timestamp: new Date().toISOString(), stage, details: sanitize(details) };
+  console.log(`[flujo-mensaje] ${stage} ${JSON.stringify(entry.details)}`);
+  flowLogHistory.push(entry);
+  if (flowLogHistory.length > 300) flowLogHistory.shift();
+  const payload = JSON.stringify({ type: 'message-log', entry });
+  for (const client of clients) if (client.clientType === 'panel' && client.readyState === 1) client.send(payload);
+}
+
 function broadcastToOverlays(data) {
   const payload=JSON.stringify(data);
   for(const client of clients)if(client.clientType==='overlay'&&client.readyState===1)client.send(payload);
@@ -350,7 +535,7 @@ function serveStatic(urlPath, res) {
   if (!target.startsWith(PUBLIC + path.sep)) return json(res, 403, { error: 'Prohibido' });
   fs.readFile(target, (error, data) => {
     if (error) return json(res, 404, { error: 'No encontrado' });
-    const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.woff2': 'font/woff2', '.ttf': 'font/ttf' };
+    const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.woff2': 'font/woff2', '.png': 'image/png', '.svg': 'image/svg+xml', '.ttf': 'font/ttf' };
     res.writeHead(200, { 'Content-Type': types[path.extname(target)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
     res.end(data);
   });
