@@ -1,23 +1,32 @@
-const categoryLabels = { pista: 'Pista', spoiler: 'Spoiler', prediccion: 'Predicción', animo: 'Ánimo', reto: 'Reto' };
+const categoryLabels = Object.fromEntries(['pista','spoiler','prediccion','animo','reto'].map(key => [key, window.I18N.t('card.category.' + key)]));
+const t = (key, vars) => window.I18N.t(key, vars);
 const state = { messages: [], languageCounts: {}, filter: 'all' };
 const socket = new WebSocket(`ws://${location.host}/ws`);
+let settings = null;
 let gameSaveTimer;
 let editingGameTitle = false;
+const languageNames = Object.fromEntries(['es','en','pt','fr','ja','de','ko'].map(key => [key, window.I18N.t('lang.' + key)]));
 
 socket.addEventListener('message', event => {
   const data = JSON.parse(event.data);
   if (data.type === 'state') render(data.data);
   if (data.type === 'notice') toast(data.message);
-  if (data.type === 'opened') toast('Bolita abierta en el stream');
-  if (data.type === 'twitch-status') document.querySelector('#connection-label').textContent = data.connected ? 'Twitch conectado' : (data.error || 'Simulador conectado');
+  if (data.type === 'opened') toast(t('panel.drawOpened'));
+  if (data.type === 'twitch-status') {
+    const label = data.connected ? t('panel.twitchConnected') : (data.error || t('panel.simulatorConnected'));
+    document.querySelector('#connection-label').textContent = label;
+    document.querySelector('#twitch-connection-status').textContent = label;
+  }
   if (data.type === 'ai-status') renderAiStatus(data.status);
   if (data.type === 'game-context' && !editingGameTitle) document.querySelector('#game-title').value = data.gameTitle || '';
+  if (data.type === 'streamer-settings') updateStreamerLanguage(data.streamerLanguage);
 });
-socket.addEventListener('open', () => document.querySelector('#connection-label').textContent = 'Simulador conectado');
+socket.addEventListener('open', () => document.querySelector('#connection-label').textContent = t('panel.simulatorConnected'));
+window.addEventListener('gumball-ui-language', () => render({ messages: state.messages, languageCounts: state.languageCounts, selectedFilter: state.filter }));
 
 function send(command) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(command));
-  else toast('Conectando con la máquina…');
+  else toast(t('panel.reconnecting'));
 }
 
 function render(next) {
@@ -25,6 +34,7 @@ function render(next) {
   state.languageCounts = next.languageCounts || {};
   state.filter = next.selectedFilter || 'all';
   if (typeof next.gameTitle === 'string' && !editingGameTitle) document.querySelector('#game-title').value = next.gameTitle;
+  if (next.streamerLanguage) updateStreamerLanguage(next.streamerLanguage);
   const pending = state.messages.filter(message => message.status === 'pending');
   const counts = Object.fromEntries(Object.keys(categoryLabels).map(key => [key, pending.filter(message => message.category === key).length]));
   document.querySelector('#nav-count').textContent = pending.length;
@@ -35,37 +45,65 @@ function render(next) {
   document.querySelector('#count-all').textContent = pending.length;
   for (const [key, value] of Object.entries(counts)) document.querySelector(`#count-${key}`).textContent = value;
   const visible = pending.filter(message => state.filter === 'all' || message.category === state.filter);
-  document.querySelector('#visible-total').textContent = `${visible.length} ${visible.length === 1 ? 'bolita' : 'bolitas'}`;
+  document.querySelector('#visible-total').textContent = t(visible.length === 1 ? 'panel.visibleSingular' : 'panel.visiblePlural', { n: visible.length });
   document.querySelectorAll('.filter-chip').forEach(element => element.classList.toggle('selected', element.dataset.filter === state.filter));
   const list = document.querySelector('#message-list');
   list.innerHTML = visible.length ? visible.slice().reverse().map(message => {
     const category = Object.hasOwn(categoryLabels, message.category) ? message.category : 'pista';
-    return `<div class="message-row"><i class="gum-dot ${category}"></i><div class="msg-main"><span class="msg-text">${escapeHtml(message.translatedText)}</span><span class="msg-original" hidden>${escapeHtml(message.text)}</span><div class="msg-meta"><span>@${escapeHtml(message.author)}</span><span>·</span><span>${flag(message.sourceLanguage)} ${escapeHtml(message.sourceLanguage)}</span><span class="msg-tag">${categoryLabels[category]}${message.highlight ? ' ✦' : ''}</span></div></div><div class="msg-actions"><button class="mini-action original-toggle" data-id="${escapeHtml(message.id)}">Ver original</button>${category === 'spoiler' ? '<span class="mini-action" title="Sellado">Sellado</span>' : `<button class="mini-action open-item" data-id="${escapeHtml(message.id)}">Sacar</button>`}<button class="mini-action discard" data-id="${escapeHtml(message.id)}" title="Descartar">Quitar</button></div></div>`;
-  }).join('') : '<div class="empty-state">No hay bolitas con este filtro.<br>Elige otra categoría o envía un mensaje de prueba.</div>';
+    return `<div class="message-row"><i class="gum-dot ${category}"></i><div class="msg-main"><span class="msg-text">${escapeHtml(message.translatedText)}</span><span class="msg-original" hidden>${escapeHtml(message.text)}</span><div class="msg-meta"><span>@${escapeHtml(message.author)}</span><span>·</span><span>${flag(message.sourceLanguage)} ${escapeHtml(t('lang.' + message.sourceLanguage))}</span><span class="msg-tag">${t('card.category.' + category)}${message.highlight ? ' ✦' : ''}</span></div></div><div class="msg-actions"><button class="mini-action original-toggle" data-id="${escapeHtml(message.id)}">${t('panel.original')}</button>${category === 'spoiler' ? `<span class="mini-action" title="${t('panel.locked')}">${t('panel.locked')}</span>` : `<button class="mini-action open-item" data-id="${escapeHtml(message.id)}">${t('panel.take')}</button>`}<button class="mini-action discard" data-id="${escapeHtml(message.id)}" title="${t('panel.remove')}">${t('panel.remove')}</button></div></div>`;
+  }).join('') : `<div class="empty-state">${t('panel.emptyMessage')}<br>${t('panel.emptyHint')}</div>`;
   list.querySelectorAll('.open-item').forEach(button => button.addEventListener('click', () => send({ type: 'open-id', id: button.dataset.id })));
   list.querySelectorAll('.discard').forEach(button => button.addEventListener('click', () => send({ type: 'discard', id: button.dataset.id })));
   list.querySelectorAll('.original-toggle').forEach(button => button.addEventListener('click', () => {
     const original = button.closest('.message-row').querySelector('.msg-original');
     original.hidden = !original.hidden;
-    button.textContent = original.hidden ? 'Ver original' : 'Ver traducción';
+    button.textContent = original.hidden ? t('panel.original') : t('panel.translation');
   }));
   const langs = Object.entries(state.languageCounts).sort((a, b) => b[1] - a[1]);
   const maxCount = Math.max(1, ...langs.map(([, count]) => count));
-  document.querySelector('#language-bars').innerHTML = langs.length ? langs.map(([lang, count]) => `<div class="lang-row"><span>${flag(lang)} ${escapeHtml(lang.toUpperCase())}</span><div class="lang-track"><i style="width:${Math.max(8, count / maxCount * 100)}%"></i></div><b>${count}</b></div>`).join('') : '<div class="empty-language">Los idiomas aparecerán cuando llegue el primer mensaje.</div>';
+  document.querySelector('#language-bars').innerHTML = langs.length ? langs.map(([lang, count]) => `<div class="lang-row"><span>${flag(lang)} ${escapeHtml(t('lang.' + lang))}</span><div class="lang-track"><i style="width:${Math.max(8, count / maxCount * 100)}%"></i></div><b>${count}</b></div>`).join('') : `<div class="empty-language">${t('panel.loadedLanguages')}</div>`;
+  renderRepeatedMessages(state.messages);
   window.dispatchEvent(new CustomEvent('gumball-state', { detail: next }));
+}
+
+function renderRepeatedMessages(messages) {
+  const groups = new Map();
+  for (const message of messages) {
+    if (message.status === 'discarded') continue;
+    const text = String(message.text || '').replace(/^\s*&(?:hint|pista|challenge|reto|cheer|animo|prediction|prediccion|spoiler)\b\s*:?\s*/i, '');
+    const key = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+    if (key.length < 5) continue;
+    const group = groups.get(key) || { text: message.translatedText || text, authors: new Set(), count: 0 };
+    group.count++;
+    group.authors.add(message.author || 'Invitado');
+    groups.set(key, group);
+  }
+  const popular = [...groups.values()].filter(group => group.count > 1).sort((a, b) => b.count - a.count).slice(0, 5);
+  document.querySelector('#repeat-list').innerHTML = popular.length ? popular.map(group => {
+    const authors = [...group.authors], shown = authors.slice(0, 8).map(author => `@${escapeHtml(author)}`);
+    if (authors.length > shown.length) shown.push(t('panel.moreAuthors', { n: authors.length - shown.length }));
+    return `<article class="repeat-item"><strong>${group.count}×</strong><div><span>${escapeHtml(group.text)}</span><small>${shown.join(' · ')}</small></div></article>`;
+  }).join('') : `<div class="empty-language">${t('panel.noRepeats')}</div>`;
 }
 
 function renderAiStatus(status) {
   const indicator = document.querySelector('#ai-status');
   const states = {
-    active: ['active', 'Gemini activa'],
-    fallback: ['fallback', 'Clasificador local activo'],
-    paused: ['paused', 'Respaldo local activo']
+    active: ['active', t('panel.aiActive')],
+    fallback: ['fallback', t('panel.aiFallback')],
+    paused: ['paused', t('panel.aiPaused')]
   };
   const [className, label] = states[status?.state] || states.paused;
   indicator.className = `ai-indicator ${className}`;
   indicator.textContent = label;
   indicator.title = status?.lastError || status?.message || '';
+}
+
+function updateStreamerLanguage(language) {
+  const select = document.querySelector('#streamer-language');
+  if (!languageNames[language]) return;
+  select.value = language;
+  document.querySelector('#profile-language').textContent = `${t('panel.streamerLanguage')} · ${t(`lang.${language}`)}`;
 }
 
 function flag(language) {
@@ -83,7 +121,7 @@ async function simulate(author, text) {
   });
   const result = await response.json();
   if (!result.ok) toast(result.reason || result.error || 'El mensaje se descartó en el filtro local.');
-  else toast('Mensaje en análisis; la IA lo procesa en un lote breve.');
+  else toast('Mensaje enviado al análisis; aparecerá si pasa los filtros.');
 }
 
 async function loadSamples() {
@@ -113,6 +151,17 @@ document.querySelector('#send-sample').addEventListener('click', () => {
   });
 });
 document.querySelector('#send-custom').addEventListener('click', sendCustom);
+document.querySelector('#fill-machine').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/demo/fill', { method: 'POST' });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || `Error ${response.status}`);
+    toast(`Añadimos ${result.added} bolitas aleatorias a la máquina.`);
+  } catch (error) { toast(`No se pudo llenar: ${error.message || 'error de conexión'}`); }
+  finally { button.disabled = false; }
+});
 document.querySelector('#custom-message').addEventListener('keydown', event => { if (event.key === 'Enter') sendCustom(); });
 function sendCustom() {
   const input = document.querySelector('#custom-message');
@@ -142,7 +191,6 @@ document.querySelector('#game-title').addEventListener('input', () => {
   clearTimeout(gameSaveTimer);
   gameSaveTimer = setTimeout(() => { void saveGameContext(); }, 300);
 });
-
 function toast(message) {
   const element = document.querySelector('#toast');
   element.textContent = message;
@@ -154,3 +202,4 @@ function toast(message) {
 loadSamples();
 fetch('/api/ai/status').then(response => response.json()).then(renderAiStatus).catch(() => {});
 fetch('/api/game-context').then(response => response.json()).then(data => { document.querySelector('#game-title').value = data.gameTitle || ''; }).catch(() => {});
+fetch('/api/settings').then(response => response.json()).then(data => updateStreamerLanguage(data.streamerLanguage)).catch(() => {});

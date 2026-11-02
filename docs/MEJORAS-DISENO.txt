@@ -1,0 +1,284 @@
+GUMBALL CHAT - GUIA PARA MEJORAR EL DISENO Y LAS ANIMACIONES
+================================================================
+
+Archivos revisados: public/overlay/overlay.js, public/overlay/overlay.css,
+public/panel/*, docs/DISENO.md
+
+El problema no son los colores ni la tipografia. El aspecto plano viene de
+como se dibuja la maquina, y lo tosco viene de como se encadenan las
+animaciones.
+
+
+----------------------------------------------------------------
+DIAGNOSTICO: POR QUE SE VE 2D
+----------------------------------------------------------------
+
+1. El vidrio no esta ni delante ni detras de las bolitas.
+   drawMachine() pinta la esfera y sus reflejos, y despues paint() pinta las
+   bolitas encima. Las bolitas tapan los brillos y el vidrio queda como un
+   circulo con borde. Un vidrio real tiene una parte trasera (detras de las
+   bolitas) y una delantera (encima de ellas).
+
+2. Todas las bolitas estan en el mismo plano.
+   Mismo radio, mismo brillo, misma nitidez. No hay profundidad.
+
+3. La sombra de cada bolita flota sobre las otras.
+   drawBall() dibuja una elipse oscura debajo de cada bolita. Cuando estan
+   amontonadas, esa sombra cae encima de la bolita de abajo y aplana todo.
+
+4. La base es un rectangulo redondeado con degradado diagonal.
+   Se lee como una caja. Una pieza fundida es un cilindro o trapecio con tapa
+   eliptica y sombreado vertical (bordes oscuros y una franja de luz).
+
+5. Faltan piezas que dan volumen.
+   No hay tapa cromada arriba de la esfera, el cuello es un rectangulo plano
+   y la manivela es una linea.
+
+6. Las bolitas de un solo color no muestran que giran.
+   Ruedan, pero el ojo no lo ve, asi que parece que se deslizan.
+
+
+----------------------------------------------------------------
+DIAGNOSTICO: POR QUE LAS ANIMACIONES SON TOSCAS
+----------------------------------------------------------------
+
+1. La salida de la bolita es un teletransporte.
+   reveal() crea una bolita fisica DENTRO de la esfera, rebota ~1050 ms y
+   desaparece. Luego aparece una capsula CSS en la rampa (playCapsule()).
+   No hay trayecto continuo entre las dos.
+
+2. La manivela nunca gira. Es lo primero que el espectador espera ver.
+
+3. La capsula CSS es otro objeto.
+   Dos medias pastillas planas con degradado lineal, sin el sombreado de la
+   bolita del canvas. La bolita cambia de aspecto en el ultimo momento.
+
+4. El papel aparece en una esquina sin relacion con la capsula.
+   La tarjeta (.open-card) aparece sola y no sale de la bolita.
+
+5. El paso de fisica es fijo.
+   tick() llama a Engine.update(engine, 1000/60) sin medir el tiempo real.
+   A 144 Hz o con OBS bajo carga, la velocidad cambia y hay tirones.
+
+6. Las bolitas se congelan de golpe.
+   Con enableSleeping y sleepThreshold: 38, una bolita se duerme todavia con
+   algo de movimiento. Cuando cae una nueva, las de abajo no reaccionan.
+
+7. Las bolitas nacen de la nada.
+   Aparecen en g.top, en el borde superior de la esfera, sin entrar por
+   ningun orificio.
+
+8. Los cambios de estado son instantaneos.
+   El filtro pasa a gris con alfa 0.22 en un solo frame. La etiqueta del
+   autor aparece y desaparece de golpe a los 1700 ms.
+
+9. Todo se sincroniza con setTimeout de duracion fija en lugar de una linea
+   de tiempo atada a los frames.
+
+
+================================================================
+PASO A PASO
+================================================================
+
+----------------------------------------------------------------
+PASO 0 - DECIDE LA TECNICA (lo que mas pesa en el resultado)
+----------------------------------------------------------------
+
+  A) Seguir con Canvas 2D, pero por capas y con mejor sombreado.
+     Resultado: mejora clara. Esfuerzo: bajo.
+
+  B) Dibujar la maquina como imagen (SVG/PNG hecho en Figma, Illustrator o
+     renderizado en Blender) y usar el canvas solo para bolitas y efectos.
+     Resultado: el mayor salto visual por esfuerzo. Esfuerzo: medio.
+     >>> RECOMENDADA <<<
+
+  C) Pasar a Three.js con fisica 3D (Rapier o cannon-es).
+     Resultado: volumen 3D real. Esfuerzo: alto y pesa mas en OBS.
+
+Recomiendo la B: con codigo es muy dificil lograr cromo y vidrio creibles, y
+con una imagen bien hecha casi no cuesta nada. Los pasos siguientes sirven
+igual para A y para B.
+
+
+----------------------------------------------------------------
+PASO 1 - SEPARA EL DIBUJO EN CAPAS, EN ESTE ORDEN
+----------------------------------------------------------------
+
+  1. Sombra en el suelo.
+  2. Base y cuello (imagen o canvas).
+  3. Interior trasero del vidrio: un tinte apenas oscuro, con el borde
+     interior mas oscuro abajo. Da sensacion de hueco.
+  4. Bolitas, ordenadas por profundidad (ver Paso 2).
+  5. Vidrio delantero: borde con efecto Fresnel (mas blanco en los bordes,
+     transparente en el centro), reflejos grandes curvos y un reflejo de
+     ventana. Todo esto va ENCIMA de las bolitas.
+  6. Tapa cromada superior con un orificio de entrada.
+
+Este cambio por si solo hace que la esfera deje de parecer un circulo
+dibujado.
+
+
+----------------------------------------------------------------
+PASO 2 - DALE PROFUNDIDAD FALSA A LAS BOLITAS
+----------------------------------------------------------------
+
+  [ ] Asigna a cada bolita un valor z entre 0 y 1 al crearla.
+  [ ] Escala el radio dibujado de 0.88 a 1.0 segun z (el cuerpo fisico puede
+      seguir igual).
+  [ ] Mezcla el color de las del fondo (z bajo) con el tinte del vidrio y
+      bajales un poco el contraste (perspectiva atmosferica).
+  [ ] Dibujalas ordenadas por z, de atras hacia adelante.
+  [ ] Varia un poco el tamano real (+/- 8 %) para que no parezcan clonadas.
+
+
+----------------------------------------------------------------
+PASO 3 - MEJORA EL SOMBREADO DE CADA BOLITA
+----------------------------------------------------------------
+
+  [ ] Quita la elipse de sombra de drawBall().
+  [ ] En su lugar usa oclusion ambiental: un degradado radial oscuro en el
+      borde inferior de cada bolita, y oscurece un poco las que estan al fondo
+      del monton (cerca de cy + r).
+  [ ] Agrega luz rebotada: un brillo tenue y calido en el borde inferior.
+      Es el truco clasico que vende el volumen.
+  [ ] Manten el brillo especular arriba a la izquierda, en la misma direccion
+      que el reflejo del vidrio, para que la luz sea coherente.
+  [ ] Haz visible el giro: dibuja una marca sutil que rote con body.angle
+      (una costura, un punto, la inicial del autor o una banda en las
+      doradas). Asi se nota que ruedan.
+  [ ] Pre-renderiza cada tipo de bolita una vez en un canvas fuera de
+      pantalla (sprite cache). Rinde mejor en OBS y permite un sombreado mas
+      rico.
+
+
+----------------------------------------------------------------
+PASO 4 - REHAZ LA BASE PARA QUE TENGA VOLUMEN
+----------------------------------------------------------------
+
+  [ ] Silueta de trapecio o cilindro: tapa superior eliptica, mas ancha abajo.
+  [ ] Sombreado horizontal tipo cilindro: borde izquierdo oscuro, franja
+      clara al 30 %, centro medio y borde derecho oscuro.
+  [ ] Aro cromado en la union con la esfera y otro en el pie.
+  [ ] La placa "Gumball Chat" debe ir hundida (sombra interior arriba, luz
+      abajo), no como otro rectangulo pegado encima.
+  [ ] Manivela como pieza: disco con perspectiva (elipse, no circulo), brazo
+      con grosor y pomo esferico. Debe poder girar (ver Paso 6).
+  [ ] Rampa de salida con tapa basculante y una boca oscura de la que sale
+      la bolita.
+
+
+----------------------------------------------------------------
+PASO 5 - ARREGLA LA FISICA
+----------------------------------------------------------------
+
+  [ ] Paso fijo con acumulador: mide el dt real, acumula, y llama a
+      Engine.update con 1000/60 tantas veces como toque. Despues interpola la
+      posicion dibujada. Asi no hay tirones con ningun monitor.
+  [ ] Sube sleepThreshold (alrededor de 60-90) o desactiva el sueno mientras
+      haya movimiento reciente.
+  [ ] Cuando cae una bolita, despierta a las vecinas
+      (Sleeping.set(body, false)) para que el monton se acomode.
+  [ ] Ajusta rebotes: restitucion ~0.15-0.2 entre bolitas y un poco mas
+      contra el vidrio, con frictionAir algo mayor para que se asienten sin
+      vibrar.
+  [ ] Entrada: la bolita aparece POR ENCIMA del orificio de la tapa, pasa por
+      el (oculta la parte fuera del vidrio con un recorte/clip) y cae.
+  [ ] Al chocar, squash & stretch breve (aplastar a 0.9 y recuperar en
+      ~120 ms). Es solo visual, no toca la fisica.
+
+
+----------------------------------------------------------------
+PASO 6 - COREOGRAFIA DE LA REVELACION (lo mas importante en lo tosco)
+----------------------------------------------------------------
+
+Reemplaza los setTimeout por una LINEA DE TIEMPO basada en
+requestAnimationFrame, con funciones de suavizado (easeInOutCubic,
+easeOutBack y un muelle para los rebotes).
+
+Secuencia:
+
+  1. Anticipacion (~150 ms)
+     La manivela retrocede unos 10 grados.
+
+  2. Giro (~600 ms)
+     La manivela da una vuelta completa con easeInOut. Durante el giro,
+     aplica un impulso suave a todas las bolitas (hacia arriba y a los lados)
+     para que el contenido se agite.
+
+  3. Seleccion (~200 ms)
+     La bolita elegida brilla un instante. Se saca del mundo fisico EN SU
+     POSICION REAL, no en un punto fijo.
+
+  4. Descenso (~350 ms)
+     Se mueve por un trayecto Bezier hacia el cuello y se oculta tras la base
+     (con recorte).
+
+  5. Salida (~400 ms)
+     Aparece en la boca de la rampa, rueda bajando (rotacion segun la
+     distancia recorrida) y la tapa se abre al pasar.
+
+  6. Rebote
+     Se detiene en la bandeja con dos rebotes amortiguados y un squash.
+
+  7. Apertura
+     LA MISMA BOLITA DEL CANVAS se parte en dos hemisferios con el mismo
+     sombreado (sin cambiar a CSS). Las mitades giran, caen con gravedad y se
+     desvanecen.
+
+  8. Papel
+     Sale enrollado de la bolita y se desenrolla con scaleY y un ligero
+     rotate. Despues vuela a la posicion de la tarjeta con la tecnica FLIP:
+     la tarjeta empieza en la posicion y escala de la bolita y termina en su
+     sitio.
+
+  9. Cierre
+     Al ocultarse, la tarjeta se dobla o se desliza hacia afuera, en lugar de
+     solo perder opacidad.
+
+Con movimiento reducido (prefers-reduced-motion), salta directo al punto 8
+con un fundido simple. Ya lo respetas; solo hay que mantenerlo.
+
+
+----------------------------------------------------------------
+PASO 7 - TRANSICIONES PEQUENAS QUE PULEN EL CONJUNTO
+----------------------------------------------------------------
+
+  [ ] Filtro: interpola el alfa y la saturacion en ~250 ms. Puedes dar a las
+      bolitas que coinciden un pequeno impulso hacia arriba para que
+      destaquen.
+  [ ] Etiqueta del autor: fundido y desplazamiento al entrar y al salir, que
+      siga a la bolita y se desvanezca suavemente.
+  [ ] Bolitas doradas: cambia el aro estatico por un brillo que recorre la
+      superficie (franja especular que la cruza) y un par de destellos
+      pequenos de vida corta.
+  [ ] Vidrio: cuando ocurra un evento (llegada o revelacion), pasa un reflejo
+      por la esfera. En reposo, nada, como pide DISENO.md.
+
+
+----------------------------------------------------------------
+PASO 8 - ACTUALIZA EL DOCUMENTO DE DISENO
+----------------------------------------------------------------
+
+En docs/DISENO.md agrega:
+
+  [ ] La direccion de la luz: arriba a la izquierda, a unos 45 grados.
+  [ ] El orden de capas del Paso 1.
+  [ ] La linea de tiempo de la revelacion con sus duraciones (Paso 6).
+  [ ] Las curvas de suavizado permitidas.
+
+Asi cualquier cambio futuro mantiene la coherencia.
+
+
+================================================================
+ORDEN DE TRABAJO SUGERIDO
+================================================================
+
+  1. Capas y vidrio delantero (Paso 1)
+     -> el mayor cambio de "2D a volumen" con poco codigo.
+  2. Sombreado y giro visible de las bolitas (Pasos 2 y 3).
+  3. Paso de fisica fijo y ajuste del sueno (Paso 5)
+     -> elimina los tirones.
+  4. Coreografia de la revelacion (Paso 6)
+     -> elimina lo tosco.
+  5. Base con volumen o imagen dibujada (Paso 4 u opcion B).
+  6. Pulido (Paso 7) y documentacion (Paso 8).

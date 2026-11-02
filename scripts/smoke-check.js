@@ -1,13 +1,18 @@
 const { spawn } = require('node:child_process');
+const path = require('node:path');
+const os = require('node:os');
+const fs = require('node:fs');
+const vm = require('node:vm');
 const { WebSocket } = require('ws');
 const { analyze, shouldDrop } = require('../server/ai/local-fallback');
 const { samples } = require('../server/chat/simulator');
 
 const port = 32000 + Math.floor(Math.random() * 10000);
 const base = `http://127.0.0.1:${port}`;
+const settingsFile = path.join(os.tmpdir(), `gumball-settings-smoke-${process.pid}.json`);
 const child = spawn(process.execPath, ['server/index.js'], {
   cwd: process.cwd(),
-  env: { ...process.env, PORT: String(port), GEMINI_API_KEY: '' },
+  env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', GUMBALL_SETTINGS_PATH: settingsFile, GEMINI_API_KEY: '' },
   stdio: ['ignore', 'pipe', 'pipe']
 });
 let output = '';
@@ -17,6 +22,7 @@ child.stderr.on('data', chunk => { output += chunk.toString(); });
 const queue = [];
 const waiters = [];
 let socket;
+let overlaySocket;
 
 function receive(data) {
   const index = waiters.findIndex(waiter => waiter.predicate(data));
@@ -94,7 +100,7 @@ async function verifyGeminiRestContract() {
     const input = Array.from({ length: 11 }, (_, index) => ({ id: `test-${index}`, text: `hint ${index}` }));
     const result = await classifyMessages(input, { gameTitle: 'Juego Smoke' });
     if (result.length !== 11 || result.slice(0, 10).some(item => !item.keep || item.category !== 'pista') || result[10].keep || result[10].category !== 'descartar') throw new Error('No validó/descartó el resultado simulado de Gemini.');
-    if (calls !== 3 || batchSizes.join(',') !== '10,10,1') throw new Error(`Tamaño de lote/reintento inesperado: llamadas=${calls}, lotes=${batchSizes}.`);
+    if (calls !== 3 || batchSizes.slice().sort((a,b)=>a-b).join(',') !== '1,10,10') throw new Error(`Tamaño de lote/reintento inesperado: llamadas=${calls}, lotes=${batchSizes}.`);
     if (JSON.stringify(getStatus()).includes('smoke-secret-never-return-this')) throw new Error('El estado expone la clave Gemini.');
   } finally {
     global.fetch = previousFetch;
@@ -105,13 +111,25 @@ async function verifyGeminiRestContract() {
 
 async function run() {
   await waitUntilReady();
-  const [panel, overlay, panelScript, overlayScript, panelCss, overlayCss, sharedTheme, matter, font, sampleList, aiStatus] = await Promise.all([
+  const [panel, overlay, panelScript, overlayScript, panelCss, overlayCss, sharedTheme, matter, font, sampleList, aiStatus, sharedI18n, settings] = await Promise.all([
     request('/'), request('/overlay'), request('/panel/panel.js'), request('/overlay/overlay.js'),
     request('/panel/panel.css'), request('/overlay/overlay.css'), request('/shared/theme.css'),
-    request('/vendor/matter.min.js'), request('/vendor/fonts/BagelFatOne-latin.woff2'), request('/api/samples'), request('/api/ai/status')
+    request('/vendor/matter.min.js'), request('/vendor/fonts/BagelFatOne-latin.woff2'), request('/api/samples'), request('/api/ai/status'), request('/shared/i18n.js'), request('/api/settings')
   ]);
   if (!panel.includes('/panel/panel.js') || !panel.includes('id="game-title"') || !panel.includes('id="ai-status"')) throw new Error('El panel no contiene contexto de juego o estado de IA.');
-  if (!overlay.includes('/vendor/matter.min.js') || !overlay.includes('/overlay/overlay.js')) throw new Error('El overlay no referencia Matter.js local o su script.');
+  if (!overlay.includes('/vendor/matter.min.js') || !overlay.includes('/shared/i18n.js') || !overlay.includes('/overlay/overlay.js')) throw new Error('El overlay no referencia Matter.js, i18n local o su script.');
+  if (!settings.uiLanguage || !settings.card || !sharedI18n.includes('const DICTS = { en, es }')) throw new Error('Faltan los ajustes completos o el archivo i18n.');
+  const dictionaryWindow = {};
+  vm.runInNewContext(sharedI18n, { window: dictionaryWindow });
+  const dicts = dictionaryWindow.I18N.DICTS;
+  const keys = value => Object.keys(value).sort().map(key => [key, value[key] && typeof value[key] === 'object' ? keys(value[key]) : null]);
+  if (JSON.stringify(keys(dicts.en)) !== JSON.stringify(keys(dicts.es))) throw new Error(`Las claves de idioma inglés y español no coinciden: en-only=${JSON.stringify(Object.keys(dicts.en.panel).filter(key=>!Object.hasOwn(dicts.es.panel,key)))} es-only=${JSON.stringify(Object.keys(dicts.es.panel).filter(key=>!Object.hasOwn(dicts.en.panel,key)))}`);
+  const invalidLanguage = await fetch(`${base}/api/settings`, { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({uiLanguage:'xx'}) });
+  if (invalidLanguage.status !== 400) throw new Error('La API aceptó un idioma de interfaz no compatible.');
+  const limited = await request('/api/settings', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({card:{durationSec:999}}) });
+  if (limited.settings.card.durationSec !== 20) throw new Error('La duración de tarjeta no se limitó a 20 segundos.');
+  const restored = await request('/api/settings', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({reset:true}) });
+  if (restored.settings.card.durationSec !== 7.2) throw new Error('No se pudieron restablecer los valores iniciales.');
   if (!matter.includes('Matter.Engine')) throw new Error('No se sirvió Matter.js local.');
   if (!panelScript.includes('original-toggle') || !panelScript.includes('escapeHtml') || !overlayScript.includes('Engine.update(engine') || !overlayScript.includes('Bodies.rectangle')) throw new Error('No se sirvieron scripts actualizados o seguros.');
   if (!panelCss.includes('.ai-indicator') || !overlayCss.includes('background:transparent')) throw new Error('No se sirvieron los estilos del frontend.');
@@ -126,7 +144,11 @@ async function run() {
     'challenge-ja': 'reto', 'challenge-fr': 'reto'
   };
   for (const sample of sampleList.filter(item => expected[item.id])) {
-    const analysis = analyze(sample.text);
+    const cleanText = sample.text.replace(/^&[\p{L}]+\s*/u, '');
+    const analysis = analyze(cleanText);
+    const tag = sample.text.match(/^&([\p{L}]+)/u)?.[1];
+    const taggedCategory = ({ hint:'pista', pista:'pista', challenge:'reto', reto:'reto', cheer:'animo', animo:'animo', prediction:'prediccion', prediccion:'prediccion', spoiler:'spoiler' })[tag];
+    if (taggedCategory && analysis.safe) { analysis.keep = true; analysis.category = taggedCategory; }
     if (!analysis.keep || analysis.category !== expected[sample.id] || analysis.sourceLanguage !== sample.language) {
       throw new Error(`Fallback clasificó mal ${sample.id}: ${JSON.stringify(analysis)}`);
     }
@@ -142,10 +164,22 @@ async function run() {
   socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
   socket.on('message', raw => { try { receive(JSON.parse(raw.toString())); } catch { /* ignore malformed event */ } });
   await new Promise((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
-  await waitFor(event => event.type === 'state');
+  const initialState = await waitFor(event => event.type === 'state');
+  if (!initialState.data.settings?.uiLanguage || !initialState.data.settings?.card) throw new Error('El WebSocket inicial no incluyó la configuración.');
   await waitFor(event => event.type === 'ai-status' && event.status.state === 'paused');
-  const acceptedHint = await simulate('SmokeTester', 'Hint: the key is behind the door.');
-  const acceptedSpoiler = await simulate('SmokeTester2', 'Spoiler: the final boss is the captain.');
+  overlaySocket = new WebSocket(`ws://127.0.0.1:${port}/ws?client=overlay`);
+  const overlayEvents = [];
+  overlaySocket.on('message', raw => { try { overlayEvents.push(JSON.parse(raw.toString())); } catch { /* ignore malformed event */ } });
+  await new Promise((resolve, reject) => { overlaySocket.once('open', resolve); overlaySocket.once('error', reject); });
+  const previewCount = initialState.data.messages.length;
+  socket.send(JSON.stringify({ type:'preview-card', category:'reto' }));
+  const previewDeadline = Date.now() + 2000;
+  while (Date.now() < previewDeadline && !overlayEvents.some(event => event.type === 'preview-card')) await new Promise(resolve => setTimeout(resolve, 20));
+  const preview = overlayEvents.find(event => event.type === 'preview-card');
+  if (!preview || preview.item.category !== 'reto' || preview.item.preview !== true) throw new Error('La vista previa no llegó al overlay.');
+  if ((await request('/api/state')).messages.length !== previewCount) throw new Error('La vista previa modificó la cola de mensajes.');
+  const acceptedHint = await simulate('SmokeTester', '&hint the key is behind the door.');
+  const acceptedSpoiler = await simulate('SmokeTester2', '&spoiler the final boss is the captain.');
   if (!acceptedHint.ok || !acceptedSpoiler.ok) throw new Error('El filtro local rechazó los mensajes de prueba válidos.');
   const hintEvent = await waitFor(event => event.type === 'gum' && event.item.author === 'SmokeTester');
   const spoilerEvent = await waitFor(event => event.type === 'gum' && event.item.author === 'SmokeTester2');
@@ -177,5 +211,7 @@ run().catch(error => {
   process.exitCode = 1;
 }).finally(() => {
   socket?.close();
+  overlaySocket?.close();
   child.kill();
+  try { fs.unlinkSync(settingsFile); } catch { /* no temporary settings were written */ }
 });
